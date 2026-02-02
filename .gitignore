@@ -1,0 +1,9 @@
+# binaries
+lazyargo
+
+# editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
