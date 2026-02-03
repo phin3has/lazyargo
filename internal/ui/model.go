@@ -173,11 +173,27 @@ func (m Model) renderMain(w, h int) string {
 
 	app := m.apps[m.selected]
 	content = fmt.Sprintf(
-		"Name:      %s\nNamespace: %s\nProject:   %s\nStatus:    %s\nSync:      %s\n\n%s",
-		app.Name, app.Namespace, app.Project, app.Status, app.Sync, m.statusLine,
+		"Name:      %s\nNamespace: %s\nProject:   %s\nHealth:    %s\nSync:      %s\nRepo:      %s\nPath:      %s\nRevision:  %s\nCluster:   %s\n\n%s",
+		app.Name,
+		app.Namespace,
+		app.Project,
+		app.Health,
+		app.Sync,
+		blankIfEmpty(app.RepoURL, "—"),
+		blankIfEmpty(app.Path, "—"),
+		blankIfEmpty(app.Revision, "—"),
+		blankIfEmpty(app.Cluster, "—"),
+		m.statusLine,
 	)
 
 	return m.styles.Main.Width(w).Height(h).Render(content)
+}
+
+func blankIfEmpty(s, fallback string) string {
+	if s == "" {
+		return fallback
+	}
+	return s
 }
 
 func max(a, b int) int {
