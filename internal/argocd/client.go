@@ -8,8 +8,14 @@ type Application struct {
 	Name      string
 	Namespace string
 	Project   string
-	Status    string // e.g. Healthy, Degraded
+	Health    string // e.g. Healthy, Degraded
 	Sync      string // e.g. Synced, OutOfSync
+
+	// Optional fields (may be empty depending on API permissions / list endpoint)
+	RepoURL   string
+	Revision  string
+	Path      string
+	Cluster   string
 }
 
 // Client is the interface the UI depends on.

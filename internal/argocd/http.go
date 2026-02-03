@@ -130,6 +130,45 @@ func (c *HTTPClient) ListApplications(ctx context.Context) ([]Application, error
 	return apps, nil
 }
 
+func (c *HTTPClient) GetApplication(ctx context.Context, name string) (Application, error) {
+	if err := c.ensureLogin(ctx); err != nil {
+		return Application{}, err
+	}
+	var resp struct {
+		Metadata struct{ Name string `json:"name"` } `json:"metadata"`
+		Spec struct {
+			Project     string `json:"project"`
+			Destination struct {
+				Namespace string `json:"namespace"`
+				Server    string `json:"server"`
+			} `json:"destination"`
+			Source struct {
+				RepoURL        string `json:"repoURL"`
+				TargetRevision string `json:"targetRevision"`
+				Path           string `json:"path"`
+			} `json:"source"`
+		} `json:"spec"`
+		Status struct {
+			Health struct{ Status string `json:"status"` } `json:"health"`
+			Sync   struct{ Status string `json:"status"` } `json:"sync"`
+		} `json:"status"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(name), nil, &resp); err != nil {
+		return Application{}, err
+	}
+	return Application{
+		Name:      resp.Metadata.Name,
+		Namespace: resp.Spec.Destination.Namespace,
+		Project:   resp.Spec.Project,
+		Health:    resp.Status.Health.Status,
+		Sync:      resp.Status.Sync.Status,
+		RepoURL:   resp.Spec.Source.RepoURL,
+		Revision:  resp.Spec.Source.TargetRevision,
+		Path:      resp.Spec.Source.Path,
+		Cluster:   resp.Spec.Destination.Server,
+	}, nil
+}
+
 func (c *HTTPClient) doJSON(ctx context.Context, method, path string, in any, out any) error {
 	u, err := url.Parse(c.Server)
 	if err != nil {

@@ -11,9 +11,9 @@ type MockClient struct {
 
 func NewMockClient() *MockClient {
 	return &MockClient{apps: []Application{
-		{Name: "payments-api", Namespace: "payments", Project: "default", Status: "Healthy", Sync: "Synced"},
-		{Name: "web-frontend", Namespace: "web", Project: "default", Status: "Healthy", Sync: "OutOfSync"},
-		{Name: "observability", Namespace: "ops", Project: "platform", Status: "Degraded", Sync: "Synced"},
+		{Name: "payments-api", Namespace: "payments", Project: "default", Health: "Healthy", Sync: "Synced", RepoURL: "https://github.com/example/platform", Path: "apps/payments", Revision: "main", Cluster: "https://kubernetes.default.svc"},
+		{Name: "web-frontend", Namespace: "web", Project: "default", Health: "Healthy", Sync: "OutOfSync", RepoURL: "https://github.com/example/platform", Path: "apps/web", Revision: "main", Cluster: "https://kubernetes.default.svc"},
+		{Name: "observability", Namespace: "ops", Project: "platform", Health: "Degraded", Sync: "Synced", RepoURL: "https://github.com/example/ops", Path: "apps/observability", Revision: "main", Cluster: "https://kubernetes.default.svc"},
 	}}
 }
 

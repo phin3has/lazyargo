@@ -48,9 +48,27 @@ go run ./cmd/lazyargo --config ./config.yaml
 - `?` – toggle help
 - `q` / `ctrl+c` – quit
 
+## Connect to a real Argo CD server
+
+By default, lazyArgo uses a mock client.
+
+To connect to a real Argo CD API:
+
+```bash
+go run ./cmd/lazyargo --mock=false --server http://localhost:8080 --username admin --password <password>
+```
+
+Or using env vars (preferred):
+
+```bash
+export ARGOCD_SERVER=http://localhost:8080
+export ARGOCD_AUTH_TOKEN=<token>
+go run ./cmd/lazyargo --mock=false
+```
+
 ## Next Steps
 
-- Implement real Argo CD client (REST / gRPC) in `internal/argocd/`
-- Add app details view (resources, health, sync status, history)
+- Flesh out application details (resources tree, history, conditions)
+- Add actions (refresh, sync, rollback)
 - Add filtering/search (like lazygit)
 - Add config file parsing (YAML) and default path lookup (`~/.config/lazyargo/`)
