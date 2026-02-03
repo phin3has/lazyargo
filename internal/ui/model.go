@@ -28,6 +28,8 @@ type Model struct {
 	apps     []argocd.Application
 	selected int
 
+	detail     *argocd.Application
+	detailErr  error
 	statusLine string
 	err        error
 }
@@ -48,7 +50,7 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 
 func (m Model) Init() tea.Cmd {
 	// Initial data load.
-	return m.refreshCmd()
+	return tea.Batch(m.refreshCmd())
 }
 
 type appsMsg struct {
@@ -56,10 +58,22 @@ type appsMsg struct {
 	err  error
 }
 
+type detailMsg struct {
+	app argocd.Application
+	err error
+}
+
 func (m Model) refreshCmd() tea.Cmd {
 	return func() tea.Msg {
 		apps, err := m.client.ListApplications(context.Background())
 		return appsMsg{apps: apps, err: err}
+	}
+}
+
+func (m Model) loadDetailCmd(name string) tea.Cmd {
+	return func() tea.Msg {
+		app, err := m.client.GetApplication(context.Background(), name)
+		return detailMsg{app: app, err: err}
 	}
 }
 
@@ -71,14 +85,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case appsMsg:
 		m.err = msg.err
+		m.detail = nil
+		m.detailErr = nil
 		if msg.err == nil {
 			m.apps = msg.apps
 			if m.selected >= len(m.apps) {
 				m.selected = max(0, len(m.apps)-1)
 			}
 			m.statusLine = fmt.Sprintf("loaded %d apps", len(m.apps))
+			if len(m.apps) > 0 {
+				// Auto-load details for the selected app.
+				return m, m.loadDetailCmd(m.apps[m.selected].Name)
+			}
 		} else {
 			m.statusLine = "failed to load apps"
+		}
+		return m, nil
+	case detailMsg:
+		m.detailErr = msg.err
+		if msg.err == nil {
+			m.detail = &msg.app
+			m.statusLine = "loaded details"
+		} else {
+			m.detail = nil
+			m.statusLine = "failed to load details"
 		}
 		return m, nil
 	case tea.KeyMsg:
@@ -94,11 +124,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Up):
 			if m.selected > 0 {
 				m.selected--
+				m.detail = nil
+				m.detailErr = nil
+				return m, m.loadDetailCmd(m.apps[m.selected].Name)
 			}
 			return m, nil
 		case key.Matches(msg, m.keys.Down):
 			if m.selected < len(m.apps)-1 {
 				m.selected++
+				m.detail = nil
+				m.detailErr = nil
+				return m, m.loadDetailCmd(m.apps[m.selected].Name)
 			}
 			return m, nil
 		}
@@ -171,9 +207,14 @@ func (m Model) renderMain(w, h int) string {
 		return m.styles.Main.Width(w).Height(h).Render(content)
 	}
 
-	app := m.apps[m.selected]
+	base := m.apps[m.selected]
+	app := base
+	if m.detail != nil && m.detail.Name == base.Name {
+		app = *m.detail
+	}
+
 	content = fmt.Sprintf(
-		"Name:      %s\nNamespace: %s\nProject:   %s\nHealth:    %s\nSync:      %s\nRepo:      %s\nPath:      %s\nRevision:  %s\nCluster:   %s\n\n%s",
+		"Name:      %s\nNamespace: %s\nProject:   %s\nHealth:    %s\nSync:      %s\nRepo:      %s\nPath:      %s\nRevision:  %s\nCluster:   %s\n\nResources:\n%s\n\n%s",
 		app.Name,
 		app.Namespace,
 		app.Project,
@@ -183,6 +224,7 @@ func (m Model) renderMain(w, h int) string {
 		blankIfEmpty(app.Path, "—"),
 		blankIfEmpty(app.Revision, "—"),
 		blankIfEmpty(app.Cluster, "—"),
+		renderResources(app.Resources),
 		m.statusLine,
 	)
 
@@ -194,6 +236,34 @@ func blankIfEmpty(s, fallback string) string {
 		return fallback
 	}
 	return s
+}
+
+func renderResources(rs []argocd.Resource) string {
+	if len(rs) == 0 {
+		return "  (none yet)"
+	}
+	lines := make([]string, 0, len(rs))
+	for _, r := range rs {
+		// Keep it compact for now.
+		kind := r.Kind
+		if r.Group != "" {
+			kind = r.Group + "/" + r.Kind
+		}
+		health := r.Health
+		if health == "" {
+			health = "—"
+		}
+		status := r.Status
+		if status == "" {
+			status = "—"
+		}
+		ns := r.Namespace
+		if ns == "" {
+			ns = "—"
+		}
+		lines = append(lines, fmt.Sprintf("  %s/%s (%s) [%s/%s]", kind, r.Name, ns, health, status))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func max(a, b int) int {

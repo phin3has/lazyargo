@@ -16,6 +16,19 @@ type Application struct {
 	Revision  string
 	Path      string
 	Cluster   string
+
+	// Resources are usually populated by GetApplication.
+	Resources []Resource
+}
+
+type Resource struct {
+	Group     string
+	Kind      string
+	Name      string
+	Namespace string
+	Status    string
+	Health    string
+	Hook      bool
 }
 
 // Client is the interface the UI depends on.

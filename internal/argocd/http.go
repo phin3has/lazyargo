@@ -151,11 +151,33 @@ func (c *HTTPClient) GetApplication(ctx context.Context, name string) (Applicati
 		Status struct {
 			Health struct{ Status string `json:"status"` } `json:"health"`
 			Sync   struct{ Status string `json:"status"` } `json:"sync"`
+			Resources []struct {
+				Group     string `json:"group"`
+				Kind      string `json:"kind"`
+				Name      string `json:"name"`
+				Namespace string `json:"namespace"`
+				Status    string `json:"status"`
+				Health    struct{ Status string `json:"status"` } `json:"health"`
+				Hook      bool   `json:"hook"`
+			} `json:"resources"`
 		} `json:"status"`
 	}
 	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(name), nil, &resp); err != nil {
 		return Application{}, err
 	}
+	resources := make([]Resource, 0, len(resp.Status.Resources))
+	for _, r := range resp.Status.Resources {
+		resources = append(resources, Resource{
+			Group:     r.Group,
+			Kind:      r.Kind,
+			Name:      r.Name,
+			Namespace: r.Namespace,
+			Status:    r.Status,
+			Health:    r.Health.Status,
+			Hook:      r.Hook,
+		})
+	}
+
 	return Application{
 		Name:      resp.Metadata.Name,
 		Namespace: resp.Spec.Destination.Namespace,
@@ -166,6 +188,7 @@ func (c *HTTPClient) GetApplication(ctx context.Context, name string) (Applicati
 		Revision:  resp.Spec.Source.TargetRevision,
 		Path:      resp.Spec.Source.Path,
 		Cluster:   resp.Spec.Destination.Server,
+		Resources: resources,
 	}, nil
 }
 
