@@ -11,9 +11,9 @@ import (
 // Eventually load from ~/.config/lazyargo/config.yaml (or similar).
 type Config struct {
 	ArgoCD struct {
-		Server string
-		Token  string
-		// InsecureSkipVerify bool
+		Server             string
+		Token              string
+		InsecureSkipVerify bool
 	}
 
 	UI struct {
@@ -26,7 +26,8 @@ func Default() Config {
 	c.UI.SidebarWidth = 28
 
 	// Common defaults so a port-forward (or local argocd-server) works with minimal config.
-	c.ArgoCD.Server = "http://localhost:8080"
+	// Argo CD commonly serves HTTPS on 443; port-forward examples often map to https://localhost:8080.
+	c.ArgoCD.Server = "https://localhost:8080"
 	return c
 }
 
@@ -55,6 +56,12 @@ func Load(path string) (Config, error) {
 	}
 	if v := os.Getenv("ARGOCD_AUTH_TOKEN"); v != "" {
 		c.ArgoCD.Token = v
+	}
+	if v := os.Getenv("ARGOCD_INSECURE"); v != "" {
+		// Matches argocd CLI: ARGOCD_INSECURE=true
+		if v == "1" || v == "true" || v == "TRUE" || v == "yes" || v == "YES" {
+			c.ArgoCD.InsecureSkipVerify = true
+		}
 	}
 
 	return c, nil

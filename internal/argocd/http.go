@@ -3,6 +3,7 @@ package argocd
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -45,7 +46,16 @@ func (c *HTTPClient) client() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
-	return &http.Client{Timeout: c.Timeout}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if c.Insecure {
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{}
+		}
+		transport.TLSClientConfig.InsecureSkipVerify = true //nolint:gosec // explicit user flag
+	}
+
+	return &http.Client{Timeout: c.Timeout, Transport: transport}
 }
 
 func (c *HTTPClient) token() string {
@@ -86,24 +96,28 @@ func (c *HTTPClient) ListApplications(ctx context.Context) ([]Application, error
 	}
 	var resp struct {
 		Items []struct {
-			Metadata struct{
+			Metadata struct {
 				Name string `json:"name"`
 			} `json:"metadata"`
-			Spec struct{
+			Spec struct {
 				Project     string `json:"project"`
-				Destination struct{
+				Destination struct {
 					Namespace string `json:"namespace"`
 					Server    string `json:"server"`
 				} `json:"destination"`
-				Source struct{
+				Source struct {
 					RepoURL        string `json:"repoURL"`
 					TargetRevision string `json:"targetRevision"`
 					Path           string `json:"path"`
 				} `json:"source"`
 			} `json:"spec"`
-			Status struct{
-				Health struct{ Status string `json:"status"` } `json:"health"`
-				Sync   struct{ Status string `json:"status"` } `json:"sync"`
+			Status struct {
+				Health struct {
+					Status string `json:"status"`
+				} `json:"health"`
+				Sync struct {
+					Status string `json:"status"`
+				} `json:"sync"`
 			} `json:"status"`
 		} `json:"items"`
 	}
@@ -135,7 +149,9 @@ func (c *HTTPClient) GetApplication(ctx context.Context, name string) (Applicati
 		return Application{}, err
 	}
 	var resp struct {
-		Metadata struct{ Name string `json:"name"` } `json:"metadata"`
+		Metadata struct {
+			Name string `json:"name"`
+		} `json:"metadata"`
 		Spec struct {
 			Project     string `json:"project"`
 			Destination struct {
@@ -149,16 +165,22 @@ func (c *HTTPClient) GetApplication(ctx context.Context, name string) (Applicati
 			} `json:"source"`
 		} `json:"spec"`
 		Status struct {
-			Health struct{ Status string `json:"status"` } `json:"health"`
-			Sync   struct{ Status string `json:"status"` } `json:"sync"`
+			Health struct {
+				Status string `json:"status"`
+			} `json:"health"`
+			Sync struct {
+				Status string `json:"status"`
+			} `json:"sync"`
 			Resources []struct {
 				Group     string `json:"group"`
 				Kind      string `json:"kind"`
 				Name      string `json:"name"`
 				Namespace string `json:"namespace"`
 				Status    string `json:"status"`
-				Health    struct{ Status string `json:"status"` } `json:"health"`
-				Hook      bool   `json:"hook"`
+				Health    struct {
+					Status string `json:"status"`
+				} `json:"health"`
+				Hook bool `json:"hook"`
 			} `json:"resources"`
 		} `json:"status"`
 	}
