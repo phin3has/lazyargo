@@ -58,13 +58,16 @@ lazyArgo can connect to Argo CD using a **token** (recommended).
 kubectl -n argocd port-forward svc/argocd-server 8080:443
 export ARGOCD_SERVER=https://localhost:8080
 export ARGOCD_AUTH_TOKEN=<token>
+# If your local trust store doesn’t accept Argo CD’s cert:
+export ARGOCD_INSECURE=true
+
 go run ./cmd/lazyargo
 ```
 
 ### Explicit flags
 
 ```bash
-go run ./cmd/lazyargo --server https://localhost:8080 --token <token>
+go run ./cmd/lazyargo --server https://localhost:8080 --token <token> --insecure
 ```
 
 ### Mock mode

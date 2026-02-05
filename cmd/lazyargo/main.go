@@ -29,6 +29,7 @@ func main() {
 		username   string
 		password   string
 		token      string
+		insecure   bool
 	)
 
 	flag.StringVar(&configPath, "config", "", "path to config file (optional)")
@@ -37,6 +38,7 @@ func main() {
 	flag.StringVar(&username, "username", "", "Argo CD username (or ARGOCD_USERNAME; optional)")
 	flag.StringVar(&password, "password", "", "Argo CD password (or ARGOCD_PASSWORD; optional)")
 	flag.StringVar(&token, "token", "", "Argo CD auth token (overrides config + ARGOCD_AUTH_TOKEN)")
+	flag.BoolVar(&insecure, "insecure", false, "skip TLS verification (or set ARGOCD_INSECURE=true)")
 	flag.Parse()
 
 	cfg, err := config.Load(configPath)
@@ -52,6 +54,9 @@ func main() {
 	if token != "" {
 		cfg.ArgoCD.Token = token
 	}
+	if insecure {
+		cfg.ArgoCD.InsecureSkipVerify = true
+	}
 	// Username/password are only for future/optional flows.
 	usr := firstNonEmpty(username, os.Getenv("ARGOCD_USERNAME"))
 	pwd := firstNonEmpty(password, os.Getenv("ARGOCD_PASSWORD"))
@@ -64,6 +69,7 @@ func main() {
 		h.AuthToken = cfg.ArgoCD.Token
 		h.Username = usr
 		h.Password = pwd
+		h.Insecure = cfg.ArgoCD.InsecureSkipVerify
 		client = h
 	}
 
