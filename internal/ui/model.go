@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -25,8 +26,12 @@ type Model struct {
 	width  int
 	height int
 
+	appsAll  []argocd.Application
 	apps     []argocd.Application
 	selected int
+
+	filterInput  textinput.Model
+	filterActive bool
 
 	detail     *argocd.Application
 	detailErr  error
@@ -38,12 +43,19 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 	h := help.New()
 	h.ShowAll = false
 
+	ti := textinput.New()
+	ti.Placeholder = "filter apps…"
+	ti.Prompt = "/ "
+	ti.CharLimit = 128
+	ti.Width = 24
+
 	m := Model{
-		cfg:    cfg,
-		client: client,
-		styles: newStyles(),
-		keys:   newKeyMap(),
-		help:   h,
+		cfg:         cfg,
+		client:      client,
+		styles:      newStyles(),
+		keys:        newKeyMap(),
+		help:        h,
+		filterInput: ti,
 	}
 	return m
 }
@@ -88,11 +100,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detail = nil
 		m.detailErr = nil
 		if msg.err == nil {
-			m.apps = msg.apps
-			if m.selected >= len(m.apps) {
-				m.selected = max(0, len(m.apps)-1)
-			}
-			m.statusLine = fmt.Sprintf("loaded %d apps", len(m.apps))
+			m.appsAll = msg.apps
+			m.applyFilter(false)
+			m.statusLine = fmt.Sprintf("loaded %d apps", len(m.appsAll))
 			if len(m.apps) > 0 {
 				// Auto-load details for the selected app.
 				return m, m.loadDetailCmd(m.apps[m.selected].Name)
@@ -112,6 +122,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
+		// While filtering, most keys should go to the input first.
+		if m.filterActive {
+			// Escape clears + exits filter mode.
+			if key.Matches(msg, m.keys.Clear) {
+				m.filterInput.SetValue("")
+				m.filterActive = false
+				m.filterInput.Blur()
+				m.applyFilter(true)
+				return m, nil
+			}
+
+			var cmd tea.Cmd
+			m.filterInput, cmd = m.filterInput.Update(msg)
+			m.applyFilter(true)
+			return m, cmd
+		}
+
 		switch {
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
@@ -121,6 +148,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Refresh):
 			m.statusLine = "refreshing…"
 			return m, m.refreshCmd()
+		case key.Matches(msg, m.keys.Filter):
+			m.filterActive = true
+			m.filterInput.Focus()
+			return m, nil
 		case key.Matches(msg, m.keys.Up):
 			if m.selected > 0 {
 				m.selected--
@@ -137,6 +168,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.loadDetailCmd(m.apps[m.selected].Name)
 			}
 			return m, nil
+		case key.Matches(msg, m.keys.Clear):
+			// esc outside filter mode clears the filter but keeps focus unchanged.
+			if m.filterInput.Value() != "" {
+				m.filterInput.SetValue("")
+				m.applyFilter(true)
+			}
+			return m, nil
 		}
 	}
 
@@ -148,7 +186,11 @@ func (m Model) View() string {
 		return ""
 	}
 
-	header := m.styles.Header.Width(m.width).Render("lazyArgo")
+	headerTitle := "lazyArgo"
+	if m.filterInput.Value() != "" || m.filterActive {
+		headerTitle = headerTitle + "  " + m.filterInput.View()
+	}
+	header := m.styles.Header.Width(m.width).Render(headerTitle)
 
 	helpView := m.help.View(m.keys)
 	helpBar := m.styles.HelpBar.Width(m.width).Render(helpView)
@@ -229,6 +271,47 @@ func (m Model) renderMain(w, h int) string {
 	)
 
 	return m.styles.Main.Width(w).Height(h).Render(content)
+}
+
+func (m *Model) applyFilter(keepSelectionByName bool) {
+	prevName := ""
+	if keepSelectionByName && len(m.apps) > 0 && m.selected >= 0 && m.selected < len(m.apps) {
+		prevName = m.apps[m.selected].Name
+	}
+
+	q := strings.ToLower(strings.TrimSpace(m.filterInput.Value()))
+	if q == "" {
+		m.apps = m.appsAll
+	} else {
+		filtered := make([]argocd.Application, 0, len(m.appsAll))
+		for _, a := range m.appsAll {
+			if strings.Contains(strings.ToLower(a.Name), q) {
+				filtered = append(filtered, a)
+			}
+		}
+		m.apps = filtered
+	}
+
+	if len(m.apps) == 0 {
+		m.selected = 0
+		m.detail = nil
+		m.detailErr = nil
+		return
+	}
+
+	// Try to keep selection stable by app name.
+	if prevName != "" {
+		for i := range m.apps {
+			if m.apps[i].Name == prevName {
+				m.selected = i
+				return
+			}
+		}
+	}
+
+	if m.selected >= len(m.apps) {
+		m.selected = max(0, len(m.apps)-1)
+	}
 }
 
 func blankIfEmpty(s, fallback string) string {
