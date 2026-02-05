@@ -50,20 +50,29 @@ go run ./cmd/lazyargo --config ./config.yaml
 
 ## Connect to a real Argo CD server
 
-By default, lazyArgo uses a mock client.
+lazyArgo can connect to Argo CD using a **token** (recommended).
 
-To connect to a real Argo CD API:
+### Common “out of the box” setup (port-forward)
 
 ```bash
-go run ./cmd/lazyargo --mock=false --server http://localhost:8080 --username admin --password <password>
+kubectl -n argocd port-forward svc/argocd-server 8080:443
+export ARGOCD_SERVER=https://localhost:8080
+export ARGOCD_AUTH_TOKEN=<token>
+go run ./cmd/lazyargo
 ```
 
-Or using env vars (preferred):
+### Explicit flags
 
 ```bash
-export ARGOCD_SERVER=http://localhost:8080
-export ARGOCD_AUTH_TOKEN=<token>
-go run ./cmd/lazyargo --mock=false
+go run ./cmd/lazyargo --server https://localhost:8080 --token <token>
+```
+
+### Mock mode
+
+If you just want to run the UI without an Argo CD server:
+
+```bash
+go run ./cmd/lazyargo --mock
 ```
 
 ## Next Steps

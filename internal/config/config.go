@@ -24,6 +24,9 @@ type Config struct {
 func Default() Config {
 	var c Config
 	c.UI.SidebarWidth = 28
+
+	// Common defaults so a port-forward (or local argocd-server) works with minimal config.
+	c.ArgoCD.Server = "http://localhost:8080"
 	return c
 }
 
@@ -32,18 +35,27 @@ func Default() Config {
 // Placeholder implementation:
 // - If path is empty: returns Default().
 // - If path is provided: verifies file exists then returns Default().
+//
+// It also overlays environment variables so the app can work without a config file.
 func Load(path string) (Config, error) {
 	c := Default()
-	if path == "" {
-		return c, nil
-	}
-	if _, err := os.Stat(path); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+	if path != "" {
+		if _, err := os.Stat(path); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return Config{}, err
+			}
 			return Config{}, err
 		}
-		return Config{}, err
+		// TODO: parse YAML/JSON/TOML from path and populate c.
 	}
 
-	// TODO: parse YAML/JSON/TOML from path and populate c.
+	// Env overrides (recommended).
+	if v := os.Getenv("ARGOCD_SERVER"); v != "" {
+		c.ArgoCD.Server = v
+	}
+	if v := os.Getenv("ARGOCD_AUTH_TOKEN"); v != "" {
+		c.ArgoCD.Token = v
+	}
+
 	return c, nil
 }

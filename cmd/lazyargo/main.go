@@ -25,18 +25,18 @@ func main() {
 	var (
 		configPath string
 		useMock    bool
-		server    string
-		username  string
-		password  string
-		token     string
+		server     string
+		username   string
+		password   string
+		token      string
 	)
 
 	flag.StringVar(&configPath, "config", "", "path to config file (optional)")
-	flag.BoolVar(&useMock, "mock", true, "use mock Argo CD client (default: true)")
-	flag.StringVar(&server, "server", "", "Argo CD server URL (or ARGOCD_SERVER)")
-	flag.StringVar(&username, "username", "", "Argo CD username (or ARGOCD_USERNAME)")
-	flag.StringVar(&password, "password", "", "Argo CD password (or ARGOCD_PASSWORD)")
-	flag.StringVar(&token, "token", "", "Argo CD auth token (or ARGOCD_AUTH_TOKEN)")
+	flag.BoolVar(&useMock, "mock", false, "use mock Argo CD client")
+	flag.StringVar(&server, "server", "", "Argo CD server URL (overrides config + ARGOCD_SERVER)")
+	flag.StringVar(&username, "username", "", "Argo CD username (or ARGOCD_USERNAME; optional)")
+	flag.StringVar(&password, "password", "", "Argo CD password (or ARGOCD_PASSWORD; optional)")
+	flag.StringVar(&token, "token", "", "Argo CD auth token (overrides config + ARGOCD_AUTH_TOKEN)")
 	flag.Parse()
 
 	cfg, err := config.Load(configPath)
@@ -45,20 +45,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	// CLI overrides.
+	if server != "" {
+		cfg.ArgoCD.Server = server
+	}
+	if token != "" {
+		cfg.ArgoCD.Token = token
+	}
+	// Username/password are only for future/optional flows.
+	usr := firstNonEmpty(username, os.Getenv("ARGOCD_USERNAME"))
+	pwd := firstNonEmpty(password, os.Getenv("ARGOCD_PASSWORD"))
+
 	var client argocd.Client
-	if useMock {
+	if useMock || cfg.ArgoCD.Server == "" {
 		client = argocd.NewMockClient()
 	} else {
-		srv := firstNonEmpty(server, os.Getenv("ARGOCD_SERVER"))
-		usr := firstNonEmpty(username, os.Getenv("ARGOCD_USERNAME"))
-		pwd := firstNonEmpty(password, os.Getenv("ARGOCD_PASSWORD"))
-		tok := firstNonEmpty(token, os.Getenv("ARGOCD_AUTH_TOKEN"))
-		if srv == "" {
-			fmt.Fprintln(os.Stderr, "missing Argo CD server: set --server or ARGOCD_SERVER")
-			os.Exit(2)
-		}
-		h := argocd.NewHTTPClient(srv)
-		h.AuthToken = tok
+		h := argocd.NewHTTPClient(cfg.ArgoCD.Server)
+		h.AuthToken = cfg.ArgoCD.Token
 		h.Username = usr
 		h.Password = pwd
 		client = h
