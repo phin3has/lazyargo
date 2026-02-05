@@ -241,6 +241,16 @@ func (m Model) renderSidebar(w, h int) string {
 
 func (m Model) renderMain(w, h int) string {
 	var content string
+	// If the initial list load failed, show a helpful error page.
+	if m.err != nil {
+		content = "Error loading applications:\n\n" + m.err.Error() + "\n\n" +
+			"Common fixes:\n" +
+			"  • Ensure ARGOCD_SERVER is reachable (default expects a local port-forward)\n" +
+			"  • Ensure ARGOCD_AUTH_TOKEN is set\n" +
+			"  • If using https://localhost:8080 and you see TLS errors, use --insecure or ARGOCD_INSECURE=true\n\n" +
+			"Press 'r' to retry."
+		return m.styles.Main.Width(w).Height(h).Render(content)
+	}
 	if len(m.apps) == 0 {
 		content = "No applications. Press 'r' to refresh."
 		if m.statusLine != "" {
@@ -255,8 +265,13 @@ func (m Model) renderMain(w, h int) string {
 		app = *m.detail
 	}
 
+	detailBlock := ""
+	if m.detailErr != nil {
+		detailBlock = "\n\nError loading details:\n\n" + m.detailErr.Error() + "\n\nPress 'r' to retry."
+	}
+
 	content = fmt.Sprintf(
-		"Name:      %s\nNamespace: %s\nProject:   %s\nHealth:    %s\nSync:      %s\nRepo:      %s\nPath:      %s\nRevision:  %s\nCluster:   %s\n\nResources:\n%s\n\n%s",
+		"Name:      %s\nNamespace: %s\nProject:   %s\nHealth:    %s\nSync:      %s\nRepo:      %s\nPath:      %s\nRevision:  %s\nCluster:   %s\n\nResources:\n%s\n\n%s%s",
 		app.Name,
 		app.Namespace,
 		app.Project,
@@ -268,6 +283,7 @@ func (m Model) renderMain(w, h int) string {
 		blankIfEmpty(app.Cluster, "—"),
 		renderResources(app.Resources),
 		m.statusLine,
+		detailBlock,
 	)
 
 	return m.styles.Main.Width(w).Height(h).Render(content)
