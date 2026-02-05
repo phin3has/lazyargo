@@ -247,7 +247,13 @@ func (c *HTTPClient) doJSON(ctx context.Context, method, path string, in any, ou
 
 	res, err := c.client().Do(req)
 	if err != nil {
-		return err
+		// Common local dev case: https://localhost:8080 via port-forward with a cert that isn't trusted.
+		hint := ""
+		es := err.Error()
+		if strings.Contains(es, "x509") || strings.Contains(es, "certificate") {
+			hint = " (TLS error: try --insecure or set ARGOCD_INSECURE=true)"
+		}
+		return fmt.Errorf("argocd request failed: %w%s", err, hint)
 	}
 	defer res.Body.Close()
 
