@@ -146,8 +146,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.help.ShowAll = !m.help.ShowAll
 			return m, nil
 		case key.Matches(msg, m.keys.Refresh):
-			m.statusLine = "refreshing…"
+			m.statusLine = "refreshing list…"
 			return m, m.refreshCmd()
+		case key.Matches(msg, m.keys.RefreshDetail):
+			if len(m.apps) == 0 {
+				return m, nil
+			}
+			m.statusLine = "refreshing details…"
+			m.detail = nil
+			m.detailErr = nil
+			return m, m.loadDetailCmd(m.apps[m.selected].Name)
 		case key.Matches(msg, m.keys.Filter):
 			m.filterActive = true
 			m.filterInput.Focus()
