@@ -26,9 +26,10 @@ type Model struct {
 	width  int
 	height int
 
-	appsAll  []argocd.Application
-	apps     []argocd.Application
-	selected int
+	appsAll       []argocd.Application
+	apps          []argocd.Application
+	selected      int
+	sidebarOffset int
 
 	filterInput  textinput.Model
 	filterActive bool
@@ -94,6 +95,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.ensureSidebarSelectionVisible()
 		return m, nil
 	case appsMsg:
 		m.err = msg.err
@@ -102,6 +104,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.appsAll = msg.apps
 			m.applyFilter(false)
+			m.ensureSidebarSelectionVisible()
 			m.statusLine = fmt.Sprintf("loaded %d apps", len(m.appsAll))
 			if len(m.apps) > 0 {
 				// Auto-load details for the selected app.
@@ -130,12 +133,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.filterActive = false
 				m.filterInput.Blur()
 				m.applyFilter(true)
+				m.ensureSidebarSelectionVisible()
 				return m, nil
 			}
 
 			var cmd tea.Cmd
 			m.filterInput, cmd = m.filterInput.Update(msg)
 			m.applyFilter(true)
+			m.ensureSidebarSelectionVisible()
 			return m, cmd
 		}
 
@@ -163,6 +168,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Up):
 			if m.selected > 0 {
 				m.selected--
+				m.ensureSidebarSelectionVisible()
 				m.detail = nil
 				m.detailErr = nil
 				return m, m.loadDetailCmd(m.apps[m.selected].Name)
@@ -171,6 +177,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Down):
 			if m.selected < len(m.apps)-1 {
 				m.selected++
+				m.ensureSidebarSelectionVisible()
 				m.detail = nil
 				m.detailErr = nil
 				return m, m.loadDetailCmd(m.apps[m.selected].Name)
@@ -181,6 +188,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.filterInput.Value() != "" {
 				m.filterInput.SetValue("")
 				m.applyFilter(true)
+				m.ensureSidebarSelectionVisible()
 			}
 			return m, nil
 		}
@@ -227,20 +235,40 @@ func (m Model) View() string {
 }
 
 func (m Model) renderSidebar(w, h int) string {
-	title := m.styles.SidebarTitle.Render("Applications")
+	titleText := "Applications"
+	if len(m.appsAll) > 0 && len(m.apps) != len(m.appsAll) {
+		titleText = fmt.Sprintf("Applications (%d/%d)", len(m.apps), len(m.appsAll))
+	} else if len(m.appsAll) > 0 {
+		titleText = fmt.Sprintf("Applications (%d)", len(m.appsAll))
+	}
+	title := m.styles.SidebarTitle.Render(titleText)
 	lines := []string{title, strings.Repeat("─", max(0, w-2))}
 
 	if m.err != nil {
 		lines = append(lines, m.styles.Error.Render(m.err.Error()))
 	}
 
-	for i, a := range m.apps {
+	// Render only the visible window of apps.
+	maxItems := h - len(lines)
+	if maxItems < 0 {
+		maxItems = 0
+	}
+	start := clamp(m.sidebarOffset, 0, max(0, len(m.apps)-1))
+	end := min(len(m.apps), start+maxItems)
+
+	for i := start; i < end; i++ {
+		a := m.apps[i]
 		name := a.Name
 		if i == m.selected {
 			lines = append(lines, m.styles.SidebarSelected.Render("▶ "+name))
 		} else {
 			lines = append(lines, m.styles.SidebarItem.Render("  "+name))
 		}
+	}
+
+	// If there's room, show a small hint when list is truncated.
+	if len(m.apps) > end && maxItems > 0 {
+		lines[len(lines)-1] = lines[len(lines)-1] + m.styles.SidebarItem.Render("  …")
 	}
 
 	content := strings.Join(lines, "\n")
@@ -338,6 +366,36 @@ func (m *Model) applyFilter(keepSelectionByName bool) {
 	}
 }
 
+func (m *Model) ensureSidebarSelectionVisible() {
+	if len(m.apps) == 0 {
+		m.sidebarOffset = 0
+		return
+	}
+	if m.height == 0 {
+		return
+	}
+
+	// Approximate visible rows: header (1) + help (1) + sidebar title+rule (2).
+	bodyHeight := m.height - 2
+	if bodyHeight < 0 {
+		bodyHeight = 0
+	}
+	visible := bodyHeight - 2
+	if visible < 1 {
+		visible = 1
+	}
+
+	if m.selected < m.sidebarOffset {
+		m.sidebarOffset = m.selected
+	}
+	if m.selected >= m.sidebarOffset+visible {
+		m.sidebarOffset = m.selected - visible + 1
+	}
+
+	maxOffset := max(0, len(m.apps)-visible)
+	m.sidebarOffset = clamp(m.sidebarOffset, 0, maxOffset)
+}
+
 func blankIfEmpty(s, fallback string) string {
 	if s == "" {
 		return fallback
@@ -371,6 +429,23 @@ func renderResources(rs []argocd.Resource) string {
 		lines = append(lines, fmt.Sprintf("  %s/%s (%s) [%s/%s]", kind, r.Name, ns, health, status))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func clamp(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 func max(a, b int) int {
