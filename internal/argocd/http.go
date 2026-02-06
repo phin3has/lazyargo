@@ -38,7 +38,7 @@ func NewHTTPClient(server string) *HTTPClient {
 	return &HTTPClient{
 		Server:    strings.TrimRight(server, "/"),
 		Timeout:   10 * time.Second,
-		UserAgent: "lazyargo/0.0.1",
+		UserAgent: "lazyargo/0.1.0",
 	}
 }
 

@@ -84,3 +84,19 @@ go run ./cmd/lazyargo --mock
 - Add actions (refresh, sync, rollback)
 - Add filtering/search (like lazygit)
 - Add config file parsing (YAML) and default path lookup (`~/.config/lazyargo/`)
+
+## Install
+
+### Go (recommended)
+
+```bash
+go install github.com/phin3has/lazyargo/cmd/lazyargo@latest
+```
+
+### Container (GHCR)
+
+Release images are published with immutable version tags, e.g.:
+
+```bash
+docker run --rm -it ghcr.io/phin3has/lazyargo:v0.1.0 --help
+```

@@ -1,4 +1,4 @@
-module lazyargo
+module github.com/phin3has/lazyargo
 
 go 1.22
 

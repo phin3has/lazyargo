@@ -11,8 +11,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"lazyargo/internal/argocd"
-	"lazyargo/internal/config"
+	"github.com/phin3has/github.com/phin3has/lazyargo/internal/argocd"
+	"github.com/phin3has/github.com/phin3has/lazyargo/internal/config"
 )
 
 type Model struct {

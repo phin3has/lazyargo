@@ -1,0 +1,65 @@
+version: 2
+
+project_name: lazyargo
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: lazyargo
+    main: ./cmd/lazyargo
+    binary: lazyargo
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+# Publish a container image to GHCR (immutable version tags only).
+# Note: Image is primarily for devpod/containerized environments.
+dockers:
+  - id: ghcr
+    image_templates:
+      - "ghcr.io/phin3has/lazyargo:{{ .Version }}"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64,linux/arm64"
+      - "--label=org.opencontainers.image.source={{ .GitURL }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+
+brews:
+  - name: lazyargo
+    homepage: "https://github.com/phin3has/lazyargo"
+    description: "A lazygit-style TUI for browsing Argo CD Applications"
+    license: "MIT"
+    repository:
+      owner: phin3has
+      name: homebrew-tap
+    directory: Formula
+    install: |
+      bin.install "lazyargo"
+    test: |
+      system "#{bin}/lazyargo", "--help"
