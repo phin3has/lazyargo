@@ -53,10 +53,11 @@ func parseBoolish(s string) bool {
 
 // Load loads configuration from the given path.
 //
-// Precedence (highest → lowest):
-//  1. Environment variables (ARGOCD_*)
-//  2. YAML file (if provided, or if default path exists)
-//  3. Defaults
+// Overall precedence (highest → lowest):
+//  1. CLI flags (applied by the caller; see cmd/lazyargo)
+//  2. Environment variables (ARGOCD_*, LAZYARGO_*)
+//  3. YAML file (if provided, or if default path exists)
+//  4. Defaults
 func Load(path string) (Config, error) {
 	c := Default()
 
