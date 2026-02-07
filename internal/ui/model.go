@@ -101,6 +101,7 @@ type Model struct {
 	resourceSel    int
 
 	resourceDetails *resourceDetailsModel
+	eventsView      *eventsModel
 
 	detail     *argocd.Application
 	detailErr  error
@@ -415,6 +416,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			rd.setSize(msg.Width-2, msg.Height-2)
 			m.resourceDetails = &rd
 		}
+		if m.eventsView != nil {
+			ev := *m.eventsView
+			ev.setSize(msg.Width-2, msg.Height-2)
+			m.eventsView = &ev
+		}
 		return m, nil
 	case appsMsg:
 		m.err = msg.err
@@ -567,6 +573,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			rd := *m.resourceDetails
 			rd, cmd = rd.Update(msg)
 			m.resourceDetails = &rd
+			return m, cmd
+		}
+		if m.eventsView != nil {
+			switch msg.String() {
+			case "esc", "q":
+				m.eventsView = nil
+				m.statusLine = "closed events"
+				return m, nil
+			}
+			var cmd tea.Cmd
+			ev := *m.eventsView
+			ev, cmd = ev.Update(msg)
+			m.eventsView = &ev
 			return m, cmd
 		}
 
@@ -733,6 +752,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resourceDetails = &rd
 			m.statusLine = "loading resource…"
 			return m, rd.initCmd()
+		case msg.String() == "E":
+			if len(m.apps) == 0 {
+				return m, nil
+			}
+			name := m.apps[m.selected].Name
+			ev := newEventsModel(m.styles, m.client, name)
+			ev.setSize(m.width-4, m.height-4)
+			m.eventsView = &ev
+			m.statusLine = "loading events…"
+			return m, ev.initCmd()
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Help):
@@ -1083,6 +1112,9 @@ func (m Model) renderMain(w, h int) string {
 	if m.resourceDetails != nil {
 		// Render resource detail overlay inside main panel.
 		return m.styles.Main.Width(w).Height(h).Render(m.resourceDetails.View())
+	}
+	if m.eventsView != nil {
+		return m.styles.Main.Width(w).Height(h).Render(m.eventsView.View())
 	}
 	if m.editModal {
 		return m.styles.Main.Width(w).Height(h).Render(m.renderEditWizard())

@@ -538,8 +538,51 @@ func (c *HTTPClient) GetManifests(ctx context.Context, appName string) ([]string
 }
 
 func (c *HTTPClient) ListEvents(ctx context.Context, appName string) ([]Event, error) {
-	_ = appName
-	return nil, fmt.Errorf("events not implemented")
+	if err := c.ensureLogin(ctx); err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Items []struct {
+			Type    string `json:"type"`
+			Reason  string `json:"reason"`
+			Message string `json:"message"`
+			// Kubernetes Event fields vary by version.
+			LastTimestamp     string `json:"lastTimestamp"`
+			EventTime         string `json:"eventTime"`
+			FirstTimestamp    string `json:"firstTimestamp"`
+			CreationTimestamp string `json:"creationTimestamp"`
+			InvolvedObject    struct {
+				Kind      string `json:"kind"`
+				Name      string `json:"name"`
+				Namespace string `json:"namespace"`
+			} `json:"involvedObject"`
+		} `json:"items"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(appName)+"/events", nil, &resp); err != nil {
+		return nil, err
+	}
+	out := make([]Event, 0, len(resp.Items))
+	for _, it := range resp.Items {
+		ts := strings.TrimSpace(it.LastTimestamp)
+		if ts == "" {
+			ts = strings.TrimSpace(it.EventTime)
+		}
+		if ts == "" {
+			ts = strings.TrimSpace(it.CreationTimestamp)
+		}
+		if ts == "" {
+			ts = strings.TrimSpace(it.FirstTimestamp)
+		}
+		obj := strings.TrimSpace(it.InvolvedObject.Kind)
+		if it.InvolvedObject.Name != "" {
+			obj += "/" + it.InvolvedObject.Name
+		}
+		if it.InvolvedObject.Namespace != "" {
+			obj += " (" + it.InvolvedObject.Namespace + ")"
+		}
+		out = append(out, Event{Type: it.Type, Reason: it.Reason, Message: it.Message, Timestamp: ts, InvolvedObject: obj})
+	}
+	return out, nil
 }
 
 func (c *HTTPClient) PodLogs(ctx context.Context, appName, podName, container string, follow bool) (io.ReadCloser, error) {
