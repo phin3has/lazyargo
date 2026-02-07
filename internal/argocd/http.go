@@ -200,6 +200,40 @@ func (c *HTTPClient) GetApplication(ctx context.Context, name string) (Applicati
 		})
 	}
 
+	// Prefer the resource tree endpoint for a fuller managed-resource view when available.
+	var tree struct {
+		Nodes []struct {
+			Group      string `json:"group"`
+			Kind       string `json:"kind"`
+			Name       string `json:"name"`
+			Namespace  string `json:"namespace"`
+			Status     string `json:"status"`
+			SyncStatus string `json:"syncStatus"`
+			Health     struct {
+				Status string `json:"status"`
+			} `json:"health"`
+			Hook bool `json:"hook"`
+		} `json:"nodes"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(name)+"/resource-tree", nil, &tree); err == nil && len(tree.Nodes) > 0 {
+		resources = resources[:0]
+		for _, n := range tree.Nodes {
+			status := n.Status
+			if status == "" {
+				status = n.SyncStatus
+			}
+			resources = append(resources, Resource{
+				Group:     n.Group,
+				Kind:      n.Kind,
+				Name:      n.Name,
+				Namespace: n.Namespace,
+				Status:    status,
+				Health:    n.Health.Status,
+				Hook:      n.Hook,
+			})
+		}
+	}
+
 	return Application{
 		Name:      resp.Metadata.Name,
 		Namespace: resp.Spec.Destination.Namespace,

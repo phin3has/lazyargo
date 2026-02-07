@@ -11,9 +11,54 @@ type MockClient struct {
 
 func NewMockClient() *MockClient {
 	return &MockClient{apps: []Application{
-		{Name: "payments-api", Namespace: "payments", Project: "default", Health: "Healthy", Sync: "Synced", RepoURL: "https://github.com/example/platform", Path: "apps/payments", Revision: "main", Cluster: "https://kubernetes.default.svc"},
-		{Name: "web-frontend", Namespace: "web", Project: "default", Health: "Healthy", Sync: "OutOfSync", RepoURL: "https://github.com/example/platform", Path: "apps/web", Revision: "main", Cluster: "https://kubernetes.default.svc"},
-		{Name: "observability", Namespace: "ops", Project: "platform", Health: "Degraded", Sync: "Synced", RepoURL: "https://github.com/example/ops", Path: "apps/observability", Revision: "main", Cluster: "https://kubernetes.default.svc"},
+		{
+			Name:      "payments-api",
+			Namespace: "payments",
+			Project:   "default",
+			Health:    "Healthy",
+			Sync:      "Synced",
+			RepoURL:   "https://github.com/example/platform",
+			Path:      "apps/payments",
+			Revision:  "main",
+			Cluster:   "https://kubernetes.default.svc",
+			Resources: []Resource{
+				{Group: "apps", Kind: "Deployment", Name: "payments-api", Namespace: "payments", Status: "Synced", Health: "Healthy"},
+				{Group: "", Kind: "Service", Name: "payments-api", Namespace: "payments", Status: "Synced", Health: "Healthy"},
+				{Group: "", Kind: "ConfigMap", Name: "payments-config", Namespace: "payments", Status: "Synced", Health: "Healthy"},
+			},
+		},
+		{
+			Name:      "web-frontend",
+			Namespace: "web",
+			Project:   "default",
+			Health:    "Healthy",
+			Sync:      "OutOfSync",
+			RepoURL:   "https://github.com/example/platform",
+			Path:      "apps/web",
+			Revision:  "main",
+			Cluster:   "https://kubernetes.default.svc",
+			Resources: []Resource{
+				{Group: "apps", Kind: "Deployment", Name: "web-frontend", Namespace: "web", Status: "OutOfSync", Health: "Healthy"},
+				{Group: "", Kind: "Service", Name: "web-frontend", Namespace: "web", Status: "Synced", Health: "Healthy"},
+				{Group: "networking.k8s.io", Kind: "Ingress", Name: "web", Namespace: "web", Status: "OutOfSync", Health: "Healthy"},
+			},
+		},
+		{
+			Name:      "observability",
+			Namespace: "ops",
+			Project:   "platform",
+			Health:    "Degraded",
+			Sync:      "Synced",
+			RepoURL:   "https://github.com/example/ops",
+			Path:      "apps/observability",
+			Revision:  "main",
+			Cluster:   "https://kubernetes.default.svc",
+			Resources: []Resource{
+				{Group: "apps", Kind: "StatefulSet", Name: "loki", Namespace: "ops", Status: "Synced", Health: "Degraded"},
+				{Group: "apps", Kind: "Deployment", Name: "grafana", Namespace: "ops", Status: "Synced", Health: "Healthy"},
+				{Group: "", Kind: "Service", Name: "grafana", Namespace: "ops", Status: "Synced", Health: "Healthy"},
+			},
+		},
 	}}
 }
 
