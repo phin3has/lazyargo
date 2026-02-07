@@ -59,6 +59,6 @@ func newStyles() styles {
 		HelpBar: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Padding(0, 1),
-		Error: lipgloss.NewStyle().Foreground(lipgloss.Color("196")), 
+		Error: lipgloss.NewStyle().Foreground(lipgloss.Color("196")),
 	}
 }

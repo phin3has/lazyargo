@@ -333,6 +333,106 @@ func (c *HTTPClient) TerminateOperation(ctx context.Context, name string) error 
 	return c.doJSON(ctx, http.MethodDelete, "/api/v1/applications/"+url.PathEscape(name)+"/operation", nil, nil)
 }
 
+func (c *HTTPClient) CreateApplication(ctx context.Context, app Application) error {
+	if err := c.ensureLogin(ctx); err != nil {
+		return err
+	}
+
+	spec := map[string]any{
+		"metadata": map[string]any{
+			"name": app.Name,
+		},
+		"spec": map[string]any{
+			"project": app.Project,
+			"source": map[string]any{
+				"repoURL":        app.RepoURL,
+				"path":           app.Path,
+				"targetRevision": app.Revision,
+			},
+			"destination": map[string]any{
+				"server":    app.Cluster,
+				"namespace": app.Namespace,
+			},
+		},
+	}
+
+	if strings.EqualFold(app.SyncPolicy, "auto") {
+		specSpec := spec["spec"].(map[string]any)
+		specSpec["syncPolicy"] = map[string]any{
+			"automated": map[string]any{},
+		}
+	}
+
+	return c.doJSON(ctx, http.MethodPost, "/api/v1/applications", spec, nil)
+}
+
+func (c *HTTPClient) ListProjects(ctx context.Context) ([]string, error) {
+	if err := c.ensureLogin(ctx); err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+		} `json:"items"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/projects", nil, &resp); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(resp.Items))
+	for _, it := range resp.Items {
+		if it.Metadata.Name != "" {
+			out = append(out, it.Metadata.Name)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func (c *HTTPClient) ListClusters(ctx context.Context) ([]string, error) {
+	if err := c.ensureLogin(ctx); err != nil {
+		return nil, err
+	}
+	var resp []struct {
+		Server string `json:"server"`
+		Name   string `json:"name"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/clusters", nil, &resp); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(resp))
+	for _, c := range resp {
+		if c.Server != "" {
+			out = append(out, c.Server)
+		} else if c.Name != "" {
+			out = append(out, c.Name)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func (c *HTTPClient) ListRepositories(ctx context.Context) ([]string, error) {
+	if err := c.ensureLogin(ctx); err != nil {
+		return nil, err
+	}
+	var resp []struct {
+		Repo string `json:"repo"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/repositories", nil, &resp); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(resp))
+	for _, r := range resp {
+		if r.Repo != "" {
+			out = append(out, r.Repo)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 func (c *HTTPClient) DeleteApplication(ctx context.Context, name string, cascade bool) error {
 	if err := c.ensureLogin(ctx); err != nil {
 		return err

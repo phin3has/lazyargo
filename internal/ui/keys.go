@@ -14,6 +14,7 @@ type keyMap struct {
 	Rollback      key.Binding
 	TerminateOp   key.Binding
 	DeleteApp     key.Binding
+	CreateApp     key.Binding
 	Filter        key.Binding
 	Sort          key.Binding
 	Clear         key.Binding
@@ -22,14 +23,14 @@ type keyMap struct {
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Refresh, k.RefreshDetail, k.RefreshHard, k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Rollback, k.TerminateOp, k.DeleteApp, k.Filter, k.Sort, k.Help, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.Refresh, k.RefreshDetail, k.RefreshHard, k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Rollback, k.TerminateOp, k.DeleteApp, k.CreateApp, k.Filter, k.Sort, k.Help, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down},
 		{k.Refresh, k.RefreshDetail, k.RefreshHard},
-		{k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Rollback, k.TerminateOp, k.DeleteApp, k.Filter, k.Sort, k.Clear},
+		{k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Rollback, k.TerminateOp, k.DeleteApp, k.CreateApp, k.Filter, k.Sort, k.Clear},
 		{k.Help, k.Quit},
 	}
 }
@@ -79,6 +80,10 @@ func newKeyMap() keyMap {
 		DeleteApp: key.NewBinding(
 			key.WithKeys("ctrl+d", "delete"),
 			key.WithHelp("ctrl+d", "delete app"),
+		),
+		CreateApp: key.NewBinding(
+			key.WithKeys("c"),
+			key.WithHelp("c", "create app"),
 		),
 		Filter: key.NewBinding(
 			key.WithKeys("/"),

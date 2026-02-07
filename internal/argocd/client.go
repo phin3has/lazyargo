@@ -13,6 +13,8 @@ type Application struct {
 
 	OperationState *OperationState
 
+	SyncPolicy string // e.g. auto/manual
+
 	// Optional fields (may be empty depending on API permissions / list endpoint)
 	RepoURL  string
 	Revision string
@@ -61,6 +63,10 @@ type Client interface {
 	RollbackApplication(ctx context.Context, name string, revisionID int64) error
 	TerminateOperation(ctx context.Context, name string) error
 	DeleteApplication(ctx context.Context, name string, cascade bool) error
+	CreateApplication(ctx context.Context, app Application) error
+	ListProjects(ctx context.Context) ([]string, error)
+	ListClusters(ctx context.Context) ([]string, error)
+	ListRepositories(ctx context.Context) ([]string, error)
 
 	// SyncApplication triggers an Argo CD sync operation.
 	// When dryRun is true, the server should validate and simulate the operation without mutating state.

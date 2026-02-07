@@ -168,6 +168,38 @@ func (m *MockClient) DeleteApplication(ctx context.Context, name string, cascade
 	return fmt.Errorf("application not found: %s", name)
 }
 
+func (m *MockClient) CreateApplication(ctx context.Context, app Application) error {
+	_ = ctx
+	if app.Name == "" {
+		return fmt.Errorf("missing application name")
+	}
+	for _, a := range m.apps {
+		if a.Name == app.Name {
+			return fmt.Errorf("application already exists: %s", app.Name)
+		}
+	}
+	if app.Project == "" {
+		app.Project = "default"
+	}
+	m.apps = append(m.apps, app)
+	return nil
+}
+
+func (m *MockClient) ListProjects(ctx context.Context) ([]string, error) {
+	_ = ctx
+	return []string{"default", "platform"}, nil
+}
+
+func (m *MockClient) ListClusters(ctx context.Context) ([]string, error) {
+	_ = ctx
+	return []string{"https://kubernetes.default.svc"}, nil
+}
+
+func (m *MockClient) ListRepositories(ctx context.Context) ([]string, error) {
+	_ = ctx
+	return []string{"https://github.com/example/platform", "https://github.com/example/ops"}, nil
+}
+
 func (m *MockClient) SyncApplication(ctx context.Context, name string, dryRun bool) error {
 	_ = ctx
 	for i := range m.apps {

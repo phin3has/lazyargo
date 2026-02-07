@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -41,6 +42,23 @@ type Model struct {
 	deleteApp     string
 	deleteCascade bool
 	deleteInput   textinput.Model
+
+	createModal      bool
+	createStep       createStep
+	createNameInput  textinput.Model
+	createPathInput  textinput.Model
+	createNSInput    textinput.Model
+	createRevInput   textinput.Model
+	createList       list.Model
+	createProjects   []string
+	createRepos      []string
+	createClusters   []string
+	createProject    string
+	createRepo       string
+	createCluster    string
+	createSyncPolicy string
+	createErr        error
+	createCreating   bool
 
 	sortMode sortMode
 
@@ -75,10 +93,23 @@ type Model struct {
 
 type sortMode int
 
+type createStep int
+
 const (
 	sortByName sortMode = iota
 	sortByHealth
 	sortBySync
+)
+
+const (
+	createStepName createStep = iota
+	createStepProject
+	createStepRepo
+	createStepPath
+	createStepCluster
+	createStepNamespace
+	createStepSyncPolicy
+	createStepConfirm
 )
 
 func (s sortMode) String() string {
@@ -108,21 +139,55 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 	del.CharLimit = 256
 	del.Width = 32
 
+	nameIn := textinput.New()
+	nameIn.Placeholder = "app name"
+	nameIn.Prompt = "name> "
+	nameIn.CharLimit = 128
+	nameIn.Width = 32
+
+	repoPath := textinput.New()
+	repoPath.Placeholder = "path/chart"
+	repoPath.Prompt = "path> "
+	repoPath.CharLimit = 256
+	repoPath.Width = 48
+
+	nsIn := textinput.New()
+	nsIn.Placeholder = "namespace"
+	nsIn.Prompt = "ns> "
+	nsIn.CharLimit = 128
+	nsIn.Width = 32
+
+	revIn := textinput.New()
+	revIn.Placeholder = "revision (default: main)"
+	revIn.Prompt = "rev> "
+	revIn.CharLimit = 128
+	revIn.Width = 32
+
+	l := list.New(nil, list.NewDefaultDelegate(), 0, 0)
+	l.SetShowHelp(true)
+	l.SetFilteringEnabled(true)
+	l.DisableQuitKeybindings()
+
 	serverLabel := cfg.ArgoCD.Server
 	if _, ok := client.(*argocd.MockClient); ok {
 		serverLabel = "mock"
 	}
 
 	m := Model{
-		cfg:         cfg,
-		client:      client,
-		styles:      newStyles(),
-		keys:        newKeyMap(),
-		help:        h,
-		filterInput: ti,
-		deleteInput: del,
-		sortMode:    sortByName,
-		serverLabel: serverLabel,
+		cfg:             cfg,
+		client:          client,
+		styles:          newStyles(),
+		keys:            newKeyMap(),
+		help:            h,
+		filterInput:     ti,
+		deleteInput:     del,
+		createNameInput: nameIn,
+		createPathInput: repoPath,
+		createNSInput:   nsIn,
+		createRevInput:  revIn,
+		createList:      l,
+		sortMode:        sortByName,
+		serverLabel:     serverLabel,
 	}
 	return m
 }
@@ -169,6 +234,26 @@ type terminateMsg struct {
 }
 
 type deleteMsg struct {
+	appName string
+	err     error
+}
+
+type projectsMsg struct {
+	items []string
+	err   error
+}
+
+type reposMsg struct {
+	items []string
+	err   error
+}
+
+type clustersMsg struct {
+	items []string
+	err   error
+}
+
+type createMsg struct {
 	appName string
 	err     error
 }
@@ -223,6 +308,34 @@ func (m Model) deleteCmd(appName string, cascade bool) tea.Cmd {
 	return func() tea.Msg {
 		err := m.client.DeleteApplication(context.Background(), appName, cascade)
 		return deleteMsg{appName: appName, err: err}
+	}
+}
+
+func (m Model) loadProjectsCmd() tea.Cmd {
+	return func() tea.Msg {
+		items, err := m.client.ListProjects(context.Background())
+		return projectsMsg{items: items, err: err}
+	}
+}
+
+func (m Model) loadReposCmd() tea.Cmd {
+	return func() tea.Msg {
+		items, err := m.client.ListRepositories(context.Background())
+		return reposMsg{items: items, err: err}
+	}
+}
+
+func (m Model) loadClustersCmd() tea.Cmd {
+	return func() tea.Msg {
+		items, err := m.client.ListClusters(context.Background())
+		return clustersMsg{items: items, err: err}
+	}
+}
+
+func (m Model) createAppCmd(app argocd.Application) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.CreateApplication(context.Background(), app)
+		return createMsg{appName: app.Name, err: err}
 	}
 }
 
@@ -329,6 +442,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.deleteInput.Blur()
 		m.statusLine = "application deleted"
 		return m, tea.Batch(m.refreshCmd())
+	case projectsMsg:
+		m.createErr = msg.err
+		if msg.err == nil {
+			m.createProjects = msg.items
+		}
+		return m, nil
+	case reposMsg:
+		m.createErr = msg.err
+		if msg.err == nil {
+			m.createRepos = msg.items
+		}
+		return m, nil
+	case clustersMsg:
+		m.createErr = msg.err
+		if msg.err == nil {
+			m.createClusters = msg.items
+		}
+		return m, nil
+	case createMsg:
+		m.createCreating = false
+		if msg.err != nil {
+			m.createErr = msg.err
+			m.statusLine = "create failed"
+			return m, nil
+		}
+		m = m.resetCreateWizard()
+		m.statusLine = "application created"
+		return m, tea.Batch(m.refreshCmd())
 	case tea.KeyMsg:
 		if m.deleteModal {
 			switch msg.String() {
@@ -355,6 +496,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.deleteInput, cmd = m.deleteInput.Update(msg)
 			return m, cmd
+		}
+
+		if m.createModal {
+			return m.updateCreateWizard(msg)
 		}
 
 		if m.syncModal {
@@ -575,6 +720,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.deleteInput.Focus()
 			m.statusLine = "confirm delete"
 			return m, nil
+		case key.Matches(msg, m.keys.CreateApp):
+			m.createModal = true
+			m.createStep = createStepName
+			m.createErr = nil
+			m.createCreating = false
+			m.createProject = ""
+			m.createRepo = ""
+			m.createCluster = ""
+			m.createSyncPolicy = "manual"
+			m.createNameInput.SetValue("")
+			m.createPathInput.SetValue("")
+			m.createNSInput.SetValue("")
+			m.createRevInput.SetValue("main")
+			m.createNameInput.Focus()
+			m.createList.SetItems(nil)
+			m.statusLine = "create app"
+			return m, tea.Batch(m.loadProjectsCmd(), m.loadReposCmd(), m.loadClustersCmd())
 		case key.Matches(msg, m.keys.Filter):
 			m.filterActive = true
 			m.filterInput.Focus()
@@ -755,6 +917,9 @@ func (m Model) renderMain(w, h int) string {
 			"  • If using https://localhost:8080 and you see TLS errors, use --insecure or ARGOCD_INSECURE=true\n\n" +
 			"Press 'r' to retry."
 		return m.styles.Main.Width(w).Height(h).Render(content)
+	}
+	if m.createModal {
+		return m.styles.Main.Width(w).Height(h).Render(m.renderCreateWizard())
 	}
 	if m.deleteModal {
 		lines := []string{fmt.Sprintf("Delete application: %s", m.deleteApp), ""}
@@ -1072,6 +1237,192 @@ func (m *Model) buildSyncPreview(targets []string) map[string][]argocd.Resource 
 		}
 	}
 	return preview
+}
+
+func (m Model) resetCreateWizard() Model {
+	m.createModal = false
+	m.createStep = createStepName
+	m.createErr = nil
+	m.createCreating = false
+	m.createProject = ""
+	m.createRepo = ""
+	m.createCluster = ""
+	m.createSyncPolicy = "manual"
+	m.createNameInput.Blur()
+	m.createPathInput.Blur()
+	m.createNSInput.Blur()
+	m.createRevInput.Blur()
+	m.createList.SetItems(nil)
+	return m
+}
+
+type stringItem string
+
+func (s stringItem) Title() string       { return string(s) }
+func (s stringItem) Description() string { return "" }
+func (s stringItem) FilterValue() string { return string(s) }
+
+func (m Model) setCreateList(title string, items []string) Model {
+	li := make([]list.Item, 0, len(items))
+	for _, it := range items {
+		li = append(li, stringItem(it))
+	}
+	m.createList.Title = title
+	m.createList.SetItems(li)
+	m.createList.Select(0)
+	return m
+}
+
+func (m Model) updateCreateWizard(k tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch k.String() {
+	case "esc":
+		m = m.resetCreateWizard()
+		m.statusLine = "create cancelled"
+		return m, nil
+	case "left":
+		if m.createStep > createStepName {
+			m.createStep--
+			m.createErr = nil
+		}
+		return m, nil
+	}
+
+	if m.createErr != nil && k.String() != "enter" {
+		// Allow navigating even with an error.
+	}
+
+	switch m.createStep {
+	case createStepName:
+		if k.String() == "enter" {
+			m.createProject = ""
+			m.createStep = createStepProject
+			m.createNameInput.Blur()
+			m = m.setCreateList("Project", m.createProjects)
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.createNameInput, cmd = m.createNameInput.Update(k)
+		return m, cmd
+	case createStepProject, createStepRepo, createStepCluster, createStepSyncPolicy:
+		if k.String() == "enter" {
+			if it, ok := m.createList.SelectedItem().(stringItem); ok {
+				sel := string(it)
+				switch m.createStep {
+				case createStepProject:
+					m.createProject = sel
+					m.createStep = createStepRepo
+					m = m.setCreateList("Repository", m.createRepos)
+				case createStepRepo:
+					m.createRepo = sel
+					m.createStep = createStepPath
+					m.createPathInput.Focus()
+				case createStepCluster:
+					m.createCluster = sel
+					m.createStep = createStepNamespace
+					m.createNSInput.Focus()
+				case createStepSyncPolicy:
+					m.createSyncPolicy = strings.ToLower(sel)
+					m.createStep = createStepConfirm
+				}
+			}
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.createList, cmd = m.createList.Update(k)
+		return m, cmd
+	case createStepPath:
+		if k.String() == "enter" {
+			m.createPathInput.Blur()
+			m.createStep = createStepCluster
+			m = m.setCreateList("Cluster", m.createClusters)
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.createPathInput, cmd = m.createPathInput.Update(k)
+		return m, cmd
+	case createStepNamespace:
+		if k.String() == "enter" {
+			m.createNSInput.Blur()
+			m.createStep = createStepSyncPolicy
+			m = m.setCreateList("Sync policy", []string{"manual", "auto"})
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.createNSInput, cmd = m.createNSInput.Update(k)
+		return m, cmd
+	case createStepConfirm:
+		switch k.String() {
+		case "y":
+			if m.createCreating {
+				return m, nil
+			}
+			m.createCreating = true
+			app := argocd.Application{
+				Name:           strings.TrimSpace(m.createNameInput.Value()),
+				Project:        strings.TrimSpace(m.createProject),
+				RepoURL:        strings.TrimSpace(m.createRepo),
+				Path:           strings.TrimSpace(m.createPathInput.Value()),
+				Revision:       strings.TrimSpace(blankIfEmpty(m.createRevInput.Value(), "main")),
+				Cluster:        strings.TrimSpace(m.createCluster),
+				Namespace:      strings.TrimSpace(m.createNSInput.Value()),
+				SyncPolicy:     m.createSyncPolicy,
+				Health:         "",
+				Sync:           "",
+				Resources:      nil,
+				OperationState: nil,
+			}
+			m.statusLine = "creating…"
+			return m, m.createAppCmd(app)
+		case "n":
+			m = m.resetCreateWizard()
+			m.statusLine = "create cancelled"
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
+func (m Model) renderCreateWizard() string {
+	head := []string{"Create application", ""}
+	if m.createErr != nil {
+		head = append(head, "Error: "+m.createErr.Error(), "")
+	}
+	if m.createCreating {
+		head = append(head, "Creating…", "")
+	}
+
+	switch m.createStep {
+	case createStepName:
+		return strings.Join(append(head, "Step 1/7: Name", m.createNameInput.View(), "", "Enter=next  Esc=cancel"), "\n")
+	case createStepProject:
+		return strings.Join(append(head, "Step 2/7: Project", m.createList.View(), "", "Enter=select  ←=back  Esc=cancel"), "\n")
+	case createStepRepo:
+		return strings.Join(append(head, "Step 3/7: Repository", m.createList.View(), "", "Enter=select  ←=back  Esc=cancel"), "\n")
+	case createStepPath:
+		return strings.Join(append(head, "Step 4/7: Path/Chart", m.createPathInput.View(), "", "Enter=next  ←=back  Esc=cancel"), "\n")
+	case createStepCluster:
+		return strings.Join(append(head, "Step 5/7: Destination cluster", m.createList.View(), "", "Enter=select  ←=back  Esc=cancel"), "\n")
+	case createStepNamespace:
+		return strings.Join(append(head, "Step 6/7: Namespace", m.createNSInput.View(), "", "Enter=next  ←=back  Esc=cancel"), "\n")
+	case createStepSyncPolicy:
+		return strings.Join(append(head, "Step 7/7: Sync policy", m.createList.View(), "", "Enter=select  ←=back  Esc=cancel"), "\n")
+	case createStepConfirm:
+		sum := []string{
+			"Confirm:",
+			"  name:      " + strings.TrimSpace(m.createNameInput.Value()),
+			"  project:   " + m.createProject,
+			"  repo:      " + m.createRepo,
+			"  path:      " + m.createPathInput.Value(),
+			"  cluster:   " + m.createCluster,
+			"  namespace: " + m.createNSInput.Value(),
+			"  sync:      " + m.createSyncPolicy,
+			"",
+			"y=create  n=cancel  ←=back",
+		}
+		return strings.Join(append(head, sum...), "\n")
+	default:
+		return strings.Join(append(head, "Unknown step"), "\n")
+	}
 }
 
 func renderResources(rs []argocd.Resource) string {

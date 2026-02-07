@@ -63,6 +63,27 @@ func (f *fakeClient) DeleteApplication(ctx context.Context, name string, cascade
 	return nil
 }
 
+func (f *fakeClient) CreateApplication(ctx context.Context, app argocd.Application) error {
+	_ = ctx
+	_ = app
+	return nil
+}
+
+func (f *fakeClient) ListProjects(ctx context.Context) ([]string, error) {
+	_ = ctx
+	return nil, nil
+}
+
+func (f *fakeClient) ListClusters(ctx context.Context) ([]string, error) {
+	_ = ctx
+	return nil, nil
+}
+
+func (f *fakeClient) ListRepositories(ctx context.Context) ([]string, error) {
+	_ = ctx
+	return nil, nil
+}
+
 func (f *fakeClient) SyncApplication(ctx context.Context, name string, dryRun bool) error {
 	f.syncCalls = append(f.syncCalls, syncCall{name: name, dryRun: dryRun})
 	if f.syncErr == nil {
