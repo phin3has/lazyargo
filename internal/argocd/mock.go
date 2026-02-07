@@ -111,3 +111,23 @@ func (m *MockClient) GetApplication(ctx context.Context, name string) (Applicati
 	}
 	return Application{}, fmt.Errorf("application not found: %s", name)
 }
+
+func (m *MockClient) SyncApplication(ctx context.Context, name string, dryRun bool) error {
+	_ = ctx
+	for i := range m.apps {
+		if m.apps[i].Name != name {
+			continue
+		}
+		if dryRun {
+			return nil
+		}
+		m.apps[i].Sync = "Synced"
+		for r := range m.apps[i].Resources {
+			if m.apps[i].Resources[r].Status != "Synced" {
+				m.apps[i].Resources[r].Status = "Synced"
+			}
+		}
+		return nil
+	}
+	return fmt.Errorf("application not found: %s", name)
+}

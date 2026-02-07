@@ -37,4 +37,8 @@ type Resource struct {
 type Client interface {
 	ListApplications(ctx context.Context) ([]Application, error)
 	GetApplication(ctx context.Context, name string) (Application, error)
+
+	// SyncApplication triggers an Argo CD sync operation.
+	// When dryRun is true, the server should validate and simulate the operation without mutating state.
+	SyncApplication(ctx context.Context, name string, dryRun bool) error
 }

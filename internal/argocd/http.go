@@ -248,6 +248,22 @@ func (c *HTTPClient) GetApplication(ctx context.Context, name string) (Applicati
 	}, nil
 }
 
+func (c *HTTPClient) SyncApplication(ctx context.Context, name string, dryRun bool) error {
+	if err := c.ensureLogin(ctx); err != nil {
+		return err
+	}
+
+	payload := struct {
+		DryRun bool `json:"dryRun"`
+	}{DryRun: dryRun}
+
+	// The Argo CD API returns an Operation object. For now we only care that the request succeeds.
+	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/applications/"+url.PathEscape(name)+"/sync", payload, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c *HTTPClient) doJSON(ctx context.Context, method, path string, in any, out any) error {
 	u, err := url.Parse(c.Server)
 	if err != nil {

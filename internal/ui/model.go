@@ -35,6 +35,11 @@ type Model struct {
 	filterActive bool
 	driftOnly    bool
 
+	syncModal          bool
+	syncTargets        []string
+	syncDryRunComplete bool
+	syncDryRunResults  []syncResult
+
 	detail     *argocd.Application
 	detailErr  error
 	statusLine string
@@ -77,6 +82,16 @@ type detailMsg struct {
 	err error
 }
 
+type syncResult struct {
+	name string
+	err  error
+}
+
+type syncBatchMsg struct {
+	dryRun  bool
+	results []syncResult
+}
+
 func (m Model) refreshCmd() tea.Cmd {
 	return func() tea.Msg {
 		apps, err := m.client.ListApplications(context.Background())
@@ -88,6 +103,17 @@ func (m Model) loadDetailCmd(name string) tea.Cmd {
 	return func() tea.Msg {
 		app, err := m.client.GetApplication(context.Background(), name)
 		return detailMsg{app: app, err: err}
+	}
+}
+
+func (m Model) syncBatchCmd(targets []string, dryRun bool) tea.Cmd {
+	return func() tea.Msg {
+		results := make([]syncResult, 0, len(targets))
+		for _, name := range targets {
+			err := m.client.SyncApplication(context.Background(), name, dryRun)
+			results = append(results, syncResult{name: name, err: err})
+		}
+		return syncBatchMsg{dryRun: dryRun, results: results}
 	}
 }
 
@@ -125,7 +151,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLine = "failed to load details"
 		}
 		return m, nil
+	case syncBatchMsg:
+		if msg.dryRun {
+			m.syncDryRunComplete = true
+			m.syncDryRunResults = msg.results
+			m.statusLine = "dry-run complete (y=sync, n=cancel)"
+			return m, nil
+		}
+
+		// Real sync finished: clear modal and refresh list.
+		m.syncModal = false
+		m.syncTargets = nil
+		m.syncDryRunComplete = false
+		m.syncDryRunResults = nil
+		m.statusLine = "sync finished"
+		return m, m.refreshCmd()
 	case tea.KeyMsg:
+		if m.syncModal {
+			switch msg.String() {
+			case "esc", "n":
+				m.syncModal = false
+				m.syncTargets = nil
+				m.syncDryRunComplete = false
+				m.syncDryRunResults = nil
+				m.statusLine = "sync cancelled"
+				return m, nil
+			case "y":
+				if !m.syncDryRunComplete {
+					return m, nil
+				}
+				m.statusLine = "syncing…"
+				return m, m.syncBatchCmd(m.syncTargets, false)
+			}
+			return m, nil
+		}
+
 		// While filtering, most keys should go to the input first.
 		if m.filterActive {
 			// Escape clears + exits filter mode.
@@ -172,6 +232,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusLine = "showing all apps"
 			}
 			return m, nil
+		case key.Matches(msg, m.keys.SyncBatch):
+			targets := make([]string, 0)
+			for _, a := range m.appsAll {
+				if a.Sync != "Synced" {
+					targets = append(targets, a.Name)
+				}
+			}
+			if len(targets) == 0 {
+				m.statusLine = "no drifted apps to sync"
+				return m, nil
+			}
+			m.syncModal = true
+			m.syncTargets = targets
+			m.syncDryRunComplete = false
+			m.syncDryRunResults = nil
+			m.statusLine = "running dry-run…"
+			return m, m.syncBatchCmd(targets, true)
 		case key.Matches(msg, m.keys.Filter):
 			m.filterActive = true
 			m.filterInput.Focus()
@@ -302,6 +379,29 @@ func (m Model) renderMain(w, h int) string {
 			"  • Ensure ARGOCD_AUTH_TOKEN is set\n" +
 			"  • If using https://localhost:8080 and you see TLS errors, use --insecure or ARGOCD_INSECURE=true\n\n" +
 			"Press 'r' to retry."
+		return m.styles.Main.Width(w).Height(h).Render(content)
+	}
+	if m.syncModal {
+		lines := []string{"Sync (dry-run preview)", ""}
+		lines = append(lines, fmt.Sprintf("Targets: %d", len(m.syncTargets)))
+		for _, name := range m.syncTargets {
+			lines = append(lines, "  - "+name)
+		}
+		lines = append(lines, "")
+		if !m.syncDryRunComplete {
+			lines = append(lines, "Running dry-run…")
+		} else {
+			lines = append(lines, "Dry-run results:")
+			for _, r := range m.syncDryRunResults {
+				if r.err != nil {
+					lines = append(lines, fmt.Sprintf("  ✗ %s: %v", r.name, r.err))
+				} else {
+					lines = append(lines, fmt.Sprintf("  ✓ %s", r.name))
+				}
+			}
+			lines = append(lines, "", "Press y to run sync, n/esc to cancel.")
+		}
+		content = strings.Join(lines, "\n")
 		return m.styles.Main.Width(w).Height(h).Render(content)
 	}
 	if len(m.apps) == 0 {
