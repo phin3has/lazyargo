@@ -190,9 +190,16 @@ func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard b
 				Phase   string `json:"phase"`
 				Message string `json:"message"`
 			} `json:"operationState"`
+			History []struct {
+				Revision   string `json:"revision"`
+				DeployedAt string `json:"deployedAt"`
+				DeployStartedAt string `json:"deployStartedAt"`
+				Source     any    `json:"source"`
+			} `json:"history"`
 			Resources []struct {
 				Group     string `json:"group"`
 				Kind      string `json:"kind"`
+				Version   string `json:"version"`
 				Name      string `json:"name"`
 				Namespace string `json:"namespace"`
 				Status    string `json:"status"`
@@ -211,6 +218,7 @@ func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard b
 		resources = append(resources, Resource{
 			Group:     r.Group,
 			Kind:      r.Kind,
+			Version:   r.Version,
 			Name:      r.Name,
 			Namespace: r.Namespace,
 			Status:    r.Status,
@@ -224,6 +232,7 @@ func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard b
 		Nodes []struct {
 			Group      string `json:"group"`
 			Kind       string `json:"kind"`
+			Version    string `json:"version"`
 			Name       string `json:"name"`
 			Namespace  string `json:"namespace"`
 			Status     string `json:"status"`
@@ -244,6 +253,7 @@ func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard b
 			resources = append(resources, Resource{
 				Group:     n.Group,
 				Kind:      n.Kind,
+				Version:   n.Version,
 				Name:      n.Name,
 				Namespace: n.Namespace,
 				Status:    status,
@@ -490,6 +500,81 @@ func (c *HTTPClient) SyncApplication(ctx context.Context, name string, dryRun bo
 		return err
 	}
 	return nil
+}
+
+func (c *HTTPClient) GetResource(ctx context.Context, appName string, resource ResourceRef) (string, error) {
+	if err := c.ensureLogin(ctx); err != nil {
+		return "", err
+	}
+
+	q := url.Values{}
+	q.Set("namespace", resource.Namespace)
+	q.Set("resourceName", resource.Name)
+	q.Set("version", resource.Version)
+	q.Set("kind", resource.Kind)
+	q.Set("group", resource.Group)
+
+	path := "/api/v1/applications/" + url.PathEscape(appName) + "/resource?" + q.Encode()
+	var resp struct {
+		Manifest string `json:"manifest"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		return "", err
+	}
+	return resp.Manifest, nil
+}
+
+func (c *HTTPClient) GetManifests(ctx context.Context, appName string) ([]string, error) {
+	if err := c.ensureLogin(ctx); err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Manifests []string `json:"manifests"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(appName)+"/manifests", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Manifests, nil
+}
+
+func (c *HTTPClient) ListEvents(ctx context.Context, appName string) ([]Event, error) {
+	_ = appName
+	return nil, fmt.Errorf("events not implemented")
+}
+
+func (c *HTTPClient) PodLogs(ctx context.Context, appName, podName, container string, follow bool) (io.ReadCloser, error) {
+	_ = ctx
+	_ = appName
+	_ = podName
+	_ = container
+	_ = follow
+	return nil, fmt.Errorf("pod logs not implemented")
+}
+
+func (c *HTTPClient) ServerSideDiff(ctx context.Context, appName string) ([]DiffResult, error) {
+	_ = ctx
+	_ = appName
+	return nil, fmt.Errorf("diff not implemented")
+}
+
+func (c *HTTPClient) RevisionMetadata(ctx context.Context, appName, revision string) (RevisionMeta, error) {
+	_ = ctx
+	_ = appName
+	_ = revision
+	return RevisionMeta{}, fmt.Errorf("revision metadata not implemented")
+}
+
+func (c *HTTPClient) ChartDetails(ctx context.Context, appName, revision string) (ChartMeta, error) {
+	_ = ctx
+	_ = appName
+	_ = revision
+	return ChartMeta{}, fmt.Errorf("chart details not implemented")
+}
+
+func (c *HTTPClient) GetSyncWindows(ctx context.Context, appName string) ([]SyncWindow, error) {
+	_ = ctx
+	_ = appName
+	return nil, fmt.Errorf("sync windows not implemented")
 }
 
 func (c *HTTPClient) doJSON(ctx context.Context, method, path string, in any, out any) error {

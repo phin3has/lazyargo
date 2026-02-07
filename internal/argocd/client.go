@@ -1,6 +1,9 @@
 package argocd
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 // Application is a minimal representation of an Argo CD application.
 // Expand as the UI needs more information.
@@ -23,6 +26,9 @@ type Application struct {
 
 	// Resources are usually populated by GetApplication.
 	Resources []Resource
+
+	// History is populated by Get/Refresh when available.
+	History []SyncHistoryEntry
 }
 
 type OperationState struct {
@@ -41,6 +47,7 @@ type Revision struct {
 type Resource struct {
 	Group     string
 	Kind      string
+	Version   string
 	Name      string
 	Namespace string
 	Status    string
@@ -72,4 +79,14 @@ type Client interface {
 	// SyncApplication triggers an Argo CD sync operation.
 	// When dryRun is true, the server should validate and simulate the operation without mutating state.
 	SyncApplication(ctx context.Context, name string, dryRun bool) error
+
+	// Phase 2 additions.
+	GetResource(ctx context.Context, appName string, resource ResourceRef) (string, error)
+	GetManifests(ctx context.Context, appName string) ([]string, error)
+	ListEvents(ctx context.Context, appName string) ([]Event, error)
+	PodLogs(ctx context.Context, appName, podName, container string, follow bool) (io.ReadCloser, error)
+	ServerSideDiff(ctx context.Context, appName string) ([]DiffResult, error)
+	RevisionMetadata(ctx context.Context, appName, revision string) (RevisionMeta, error)
+	ChartDetails(ctx context.Context, appName, revision string) (ChartMeta, error)
+	GetSyncWindows(ctx context.Context, appName string) ([]SyncWindow, error)
 }

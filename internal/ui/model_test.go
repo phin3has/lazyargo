@@ -3,7 +3,9 @@ package ui
 import (
 	"context"
 	"errors"
+	"io"
 	"reflect"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -96,6 +98,60 @@ func (f *fakeClient) SyncApplication(ctx context.Context, name string, dryRun bo
 		return nil
 	}
 	return f.syncErr[name]
+}
+
+func (f *fakeClient) GetResource(ctx context.Context, appName string, resource argocd.ResourceRef) (string, error) {
+	_ = ctx
+	_ = appName
+	_ = resource
+	return "", nil
+}
+
+func (f *fakeClient) GetManifests(ctx context.Context, appName string) ([]string, error) {
+	_ = ctx
+	_ = appName
+	return nil, nil
+}
+
+func (f *fakeClient) ListEvents(ctx context.Context, appName string) ([]argocd.Event, error) {
+	_ = ctx
+	_ = appName
+	return nil, nil
+}
+
+func (f *fakeClient) PodLogs(ctx context.Context, appName, podName, container string, follow bool) (io.ReadCloser, error) {
+	_ = ctx
+	_ = appName
+	_ = podName
+	_ = container
+	_ = follow
+	return io.NopCloser(strings.NewReader("")), nil
+}
+
+func (f *fakeClient) ServerSideDiff(ctx context.Context, appName string) ([]argocd.DiffResult, error) {
+	_ = ctx
+	_ = appName
+	return nil, nil
+}
+
+func (f *fakeClient) RevisionMetadata(ctx context.Context, appName, revision string) (argocd.RevisionMeta, error) {
+	_ = ctx
+	_ = appName
+	_ = revision
+	return argocd.RevisionMeta{}, nil
+}
+
+func (f *fakeClient) ChartDetails(ctx context.Context, appName, revision string) (argocd.ChartMeta, error) {
+	_ = ctx
+	_ = appName
+	_ = revision
+	return argocd.ChartMeta{}, nil
+}
+
+func (f *fakeClient) GetSyncWindows(ctx context.Context, appName string) ([]argocd.SyncWindow, error) {
+	_ = ctx
+	_ = appName
+	return nil, nil
 }
 
 func TestModel_applyFilter_driftAndQuery(t *testing.T) {

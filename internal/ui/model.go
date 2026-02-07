@@ -97,6 +97,11 @@ type Model struct {
 	terminateErr     error
 	terminateConfirm bool
 
+	focusResources bool
+	resourceSel    int
+
+	resourceDetails *resourceDetailsModel
+
 	detail     *argocd.Application
 	detailErr  error
 	statusLine string
@@ -405,6 +410,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ensureSidebarSelectionVisible()
+		if m.resourceDetails != nil {
+			rd := *m.resourceDetails
+			rd.setSize(msg.Width-2, msg.Height-2)
+			m.resourceDetails = &rd
+		}
 		return m, nil
 	case appsMsg:
 		m.err = msg.err
@@ -429,6 +439,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.detail = &msg.app
 			m.statusLine = "loaded details"
+			// Clamp resource selection.
+			if m.resourceSel >= len(msg.app.Resources) {
+				m.resourceSel = max(0, len(msg.app.Resources)-1)
+			}
 		} else {
 			m.detail = nil
 			m.statusLine = "failed to load details"
@@ -541,6 +555,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusLine = "application updated"
 		return m, tea.Batch(m.refreshCmd())
 	case tea.KeyMsg:
+		if m.resourceDetails != nil {
+			// Close handled here.
+			switch msg.String() {
+			case "esc", "q":
+				m.resourceDetails = nil
+				m.statusLine = "closed resource view"
+				return m, nil
+			}
+			var cmd tea.Cmd
+			rd := *m.resourceDetails
+			rd, cmd = rd.Update(msg)
+			m.resourceDetails = &rd
+			return m, cmd
+		}
+
 		if m.deleteModal {
 			switch msg.String() {
 			case "esc":
@@ -685,6 +714,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
+		case msg.String() == "tab":
+			m.focusResources = !m.focusResources
+			if m.focusResources {
+				m.statusLine = "focus: resources (tab to switch)"
+			} else {
+				m.statusLine = "focus: applications (tab to switch)"
+			}
+			return m, nil
+		case (msg.String() == "enter" || msg.String() == "v") && m.focusResources:
+			if m.detail == nil || len(m.detail.Resources) == 0 {
+				return m, nil
+			}
+			r := m.detail.Resources[clamp(m.resourceSel, 0, len(m.detail.Resources)-1)]
+			ref := argocd.ResourceRef{Group: r.Group, Kind: r.Kind, Name: r.Name, Namespace: r.Namespace, Version: r.Version}
+			rd := newResourceDetailsModel(m.styles, m.client, m.detail.Name, ref)
+			rd.setSize(m.width-4, m.height-4)
+			m.resourceDetails = &rd
+			m.statusLine = "loading resource…"
+			return m, rd.initCmd()
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Help):
@@ -848,20 +896,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLine = "sorted by " + m.sortMode.String()
 			return m, nil
 		case key.Matches(msg, m.keys.Up):
+			if m.focusResources {
+				if m.resourceSel > 0 {
+					m.resourceSel--
+				}
+				return m, nil
+			}
 			if m.selected > 0 {
 				m.selected--
 				m.ensureSidebarSelectionVisible()
 				m.detail = nil
 				m.detailErr = nil
+				m.resourceSel = 0
 				return m, m.loadDetailCmd(m.apps[m.selected].Name, false)
 			}
 			return m, nil
 		case key.Matches(msg, m.keys.Down):
+			if m.focusResources {
+				if m.detail != nil && m.resourceSel < len(m.detail.Resources)-1 {
+					m.resourceSel++
+				}
+				return m, nil
+			}
 			if m.selected < len(m.apps)-1 {
 				m.selected++
 				m.ensureSidebarSelectionVisible()
 				m.detail = nil
 				m.detailErr = nil
+				m.resourceSel = 0
 				return m, m.loadDetailCmd(m.apps[m.selected].Name, false)
 			}
 			return m, nil
@@ -1018,6 +1080,10 @@ func (m Model) renderMain(w, h int) string {
 			"Press 'r' to retry."
 		return m.styles.Main.Width(w).Height(h).Render(content)
 	}
+	if m.resourceDetails != nil {
+		// Render resource detail overlay inside main panel.
+		return m.styles.Main.Width(w).Height(h).Render(m.resourceDetails.View())
+	}
 	if m.editModal {
 		return m.styles.Main.Width(w).Height(h).Render(m.renderEditWizard())
 	}
@@ -1163,7 +1229,7 @@ func (m Model) renderMain(w, h int) string {
 		blankIfEmpty(app.Path, "—"),
 		blankIfEmpty(app.Revision, "—"),
 		blankIfEmpty(app.Cluster, "—"),
-		renderResources(app.Resources),
+		renderResources(app.Resources, m.resourceSel, m.focusResources, m.styles),
 		m.statusLine,
 		detailBlock,
 	)
@@ -1708,13 +1774,13 @@ func (m Model) renderEditWizard() string {
 	}
 }
 
-func renderResources(rs []argocd.Resource) string {
+func renderResources(rs []argocd.Resource, selected int, focus bool, st styles) string {
 	if len(rs) == 0 {
 		return "  (none yet)"
 	}
-	lines := make([]string, 0, len(rs))
-	for _, r := range rs {
-		// Keep it compact for now.
+	lines := make([]string, 0, len(rs)+1)
+	lines = append(lines, "  (tab to focus resources, enter/v to view)")
+	for i, r := range rs {
 		kind := r.Kind
 		if r.Group != "" {
 			kind = r.Group + "/" + r.Kind
@@ -1731,7 +1797,17 @@ func renderResources(rs []argocd.Resource) string {
 		if ns == "" {
 			ns = "—"
 		}
-		lines = append(lines, fmt.Sprintf("  %s/%s (%s) [%s/%s]", kind, r.Name, ns, health, status))
+		prefix := "  "
+		style := st.SidebarItem
+		if i == selected {
+			prefix = "▶ "
+			if focus {
+				style = st.SidebarSelected
+			} else {
+				style = st.SidebarTitle
+			}
+		}
+		lines = append(lines, style.Render(fmt.Sprintf("%s%s/%s (%s) [%s/%s]", prefix, kind, r.Name, ns, health, status)))
 	}
 	return strings.Join(lines, "\n")
 }
