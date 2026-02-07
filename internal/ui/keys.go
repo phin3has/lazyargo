@@ -7,6 +7,7 @@ type keyMap struct {
 	Down          key.Binding
 	Refresh       key.Binding
 	RefreshDetail key.Binding
+	RefreshHard   key.Binding
 	ToggleDrift   key.Binding
 	SyncBatch     key.Binding
 	SyncApp       key.Binding
@@ -18,13 +19,13 @@ type keyMap struct {
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Refresh, k.RefreshDetail, k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Filter, k.Sort, k.Help, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.Refresh, k.RefreshDetail, k.RefreshHard, k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Filter, k.Sort, k.Help, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down},
-		{k.Refresh, k.RefreshDetail},
+		{k.Refresh, k.RefreshDetail, k.RefreshHard},
 		{k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Filter, k.Sort, k.Clear},
 		{k.Help, k.Quit},
 	}
@@ -47,6 +48,10 @@ func newKeyMap() keyMap {
 		RefreshDetail: key.NewBinding(
 			key.WithKeys("d"),
 			key.WithHelp("d", "refresh details"),
+		),
+		RefreshHard: key.NewBinding(
+			key.WithKeys("R"),
+			key.WithHelp("R", "hard refresh"),
 		),
 		ToggleDrift: key.NewBinding(
 			key.WithKeys("D"),

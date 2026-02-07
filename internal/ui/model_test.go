@@ -29,6 +29,11 @@ func (f *fakeClient) ListApplications(ctx context.Context) ([]argocd.Application
 }
 
 func (f *fakeClient) GetApplication(ctx context.Context, name string) (argocd.Application, error) {
+	return f.RefreshApplication(ctx, name, false)
+}
+
+func (f *fakeClient) RefreshApplication(ctx context.Context, name string, hard bool) (argocd.Application, error) {
+	_ = hard
 	return argocd.Application{Name: name}, nil
 }
 

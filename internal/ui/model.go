@@ -133,9 +133,9 @@ func (m Model) refreshCmd() tea.Cmd {
 	}
 }
 
-func (m Model) loadDetailCmd(name string) tea.Cmd {
+func (m Model) loadDetailCmd(name string, hard bool) tea.Cmd {
 	return func() tea.Msg {
-		app, err := m.client.GetApplication(context.Background(), name)
+		app, err := m.client.RefreshApplication(context.Background(), name, hard)
 		return detailMsg{app: app, err: err}
 	}
 }
@@ -170,7 +170,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLine = fmt.Sprintf("loaded %d apps", len(m.appsAll))
 			if len(m.apps) > 0 {
 				// Auto-load details for the selected app.
-				return m, m.loadDetailCmd(m.apps[m.selected].Name)
+				return m, m.loadDetailCmd(m.apps[m.selected].Name, false)
 			}
 		} else {
 			m.statusLine = "failed to load apps"
@@ -258,7 +258,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLine = "refreshing details…"
 			m.detail = nil
 			m.detailErr = nil
-			return m, m.loadDetailCmd(m.apps[m.selected].Name)
+			return m, m.loadDetailCmd(m.apps[m.selected].Name, false)
+		case key.Matches(msg, m.keys.RefreshHard):
+			if len(m.apps) == 0 {
+				return m, nil
+			}
+			m.statusLine = "hard refreshing…"
+			m.detail = nil
+			m.detailErr = nil
+			return m, m.loadDetailCmd(m.apps[m.selected].Name, true)
 		case key.Matches(msg, m.keys.ToggleDrift):
 			m.driftOnly = !m.driftOnly
 			m.applyFilter(true)
@@ -315,7 +323,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ensureSidebarSelectionVisible()
 				m.detail = nil
 				m.detailErr = nil
-				return m, m.loadDetailCmd(m.apps[m.selected].Name)
+				return m, m.loadDetailCmd(m.apps[m.selected].Name, false)
 			}
 			return m, nil
 		case key.Matches(msg, m.keys.Down):
@@ -324,7 +332,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ensureSidebarSelectionVisible()
 				m.detail = nil
 				m.detailErr = nil
-				return m, m.loadDetailCmd(m.apps[m.selected].Name)
+				return m, m.loadDetailCmd(m.apps[m.selected].Name, false)
 			}
 			return m, nil
 		case key.Matches(msg, m.keys.Clear):

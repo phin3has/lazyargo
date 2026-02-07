@@ -149,9 +149,19 @@ func (c *HTTPClient) ListApplications(ctx context.Context) ([]Application, error
 }
 
 func (c *HTTPClient) GetApplication(ctx context.Context, name string) (Application, error) {
+	return c.RefreshApplication(ctx, name, false)
+}
+
+func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard bool) (Application, error) {
 	if err := c.ensureLogin(ctx); err != nil {
 		return Application{}, err
 	}
+
+	path := "/api/v1/applications/" + url.PathEscape(name)
+	if hard {
+		path += "?refresh=hard"
+	}
+
 	var resp struct {
 		Metadata struct {
 			Name string `json:"name"`
@@ -188,7 +198,7 @@ func (c *HTTPClient) GetApplication(ctx context.Context, name string) (Applicati
 			} `json:"resources"`
 		} `json:"status"`
 	}
-	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(name), nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return Application{}, err
 	}
 	resources := make([]Resource, 0, len(resp.Status.Resources))

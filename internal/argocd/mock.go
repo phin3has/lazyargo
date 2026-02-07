@@ -103,7 +103,12 @@ func (m *MockClient) ListApplications(ctx context.Context) ([]Application, error
 }
 
 func (m *MockClient) GetApplication(ctx context.Context, name string) (Application, error) {
+	return m.RefreshApplication(ctx, name, false)
+}
+
+func (m *MockClient) RefreshApplication(ctx context.Context, name string, hard bool) (Application, error) {
 	_ = ctx
+	_ = hard
 	for _, a := range m.apps {
 		if a.Name == name {
 			return a, nil

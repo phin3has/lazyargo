@@ -38,6 +38,10 @@ type Client interface {
 	ListApplications(ctx context.Context) ([]Application, error)
 	GetApplication(ctx context.Context, name string) (Application, error)
 
+	// RefreshApplication fetches an application, optionally forcing a cache bypass.
+	// When hard is true, the server should refresh from source/cluster.
+	RefreshApplication(ctx context.Context, name string, hard bool) (Application, error)
+
 	// SyncApplication triggers an Argo CD sync operation.
 	// When dryRun is true, the server should validate and simulate the operation without mutating state.
 	SyncApplication(ctx context.Context, name string, dryRun bool) error
