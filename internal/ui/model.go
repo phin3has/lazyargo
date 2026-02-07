@@ -98,7 +98,12 @@ type Model struct {
 	terminateConfirm bool
 
 	focusResources bool
-	resourceSel    int
+	resourceSel    int // index into visible resource tree
+	resourceCollapsed map[string]bool
+	resourceZoom      string
+
+	resourceSearchActive bool
+	resourceSearchInput  textinput.Model
 
 	resourceDetails *resourceDetailsModel
 	eventsView      *eventsModel
@@ -155,6 +160,12 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 	ti.Prompt = "/ "
 	ti.CharLimit = 128
 	ti.Width = 24
+
+	rti := textinput.New()
+	rti.Placeholder = "search resources…"
+	rti.Prompt = "/ "
+	rti.CharLimit = 128
+	rti.Width = 32
 
 	del := textinput.New()
 	del.Placeholder = "type app name to confirm"
@@ -233,6 +244,8 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 		keys:            newKeyMap(),
 		help:            h,
 		filterInput:     ti,
+		resourceSearchInput: rti,
+		resourceCollapsed:   map[string]bool{},
 		deleteInput:     del,
 		createNameInput: nameIn,
 		createPathInput: repoPath,
@@ -470,8 +483,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detail = &msg.app
 			m.statusLine = "loaded details"
 			// Clamp resource selection.
-			if m.resourceSel >= len(msg.app.Resources) {
-				m.resourceSel = max(0, len(msg.app.Resources)-1)
+			n := len(m.visibleResourceNodesFor(msg.app))
+			if m.resourceSel >= n {
+				m.resourceSel = max(0, n-1)
 			}
 		} else {
 			m.detail = nil
@@ -820,6 +834,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		if m.resourceSearchActive {
+			switch msg.String() {
+			case "esc":
+				m.resourceSearchActive = false
+				m.resourceSearchInput.SetValue("")
+				m.resourceSearchInput.Blur()
+				m.statusLine = "resource search cancelled"
+				return m, nil
+			case "enter":
+				q := strings.ToLower(strings.TrimSpace(m.resourceSearchInput.Value()))
+				m.resourceSearchActive = false
+				m.resourceSearchInput.Blur()
+				if q != "" {
+					m.jumpToResourceMatch(q)
+				}
+				m.resourceSearchInput.SetValue("")
+				return m, nil
+			}
+			var cmd tea.Cmd
+			m.resourceSearchInput, cmd = m.resourceSearchInput.Update(msg)
+			return m, cmd
+		}
+
 		switch {
 		case msg.String() == "tab":
 			m.focusResources = !m.focusResources
@@ -829,11 +866,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusLine = "focus: applications (tab to switch)"
 			}
 			return m, nil
+		case msg.String() == " " && m.focusResources:
+			m.toggleResourceCollapse()
+			return m, nil
+		case msg.String() == "z" && m.focusResources:
+			m.toggleResourceZoom()
+			return m, nil
 		case (msg.String() == "enter" || msg.String() == "v") && m.focusResources:
-			if m.detail == nil || len(m.detail.Resources) == 0 {
+			r, ok := m.selectedResource()
+			if !ok {
 				return m, nil
 			}
-			r := m.detail.Resources[clamp(m.resourceSel, 0, len(m.detail.Resources)-1)]
 			ref := argocd.ResourceRef{Group: r.Group, Kind: r.Kind, Name: r.Name, Namespace: r.Namespace, Version: r.Version}
 			rd := newResourceDetailsModel(m.styles, m.client, m.detail.Name, ref)
 			rd.setSize(m.width-4, m.height-4)
@@ -851,10 +894,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLine = "loading events…"
 			return m, ev.initCmd()
 		case msg.String() == "l" && m.focusResources:
-			if m.detail == nil || len(m.detail.Resources) == 0 {
+			r, ok := m.selectedResource()
+			if !ok {
 				return m, nil
 			}
-			r := m.detail.Resources[clamp(m.resourceSel, 0, len(m.detail.Resources)-1)]
 			if !strings.EqualFold(r.Kind, "pod") {
 				m.statusLine = "select a Pod to view logs"
 				return m, nil
@@ -886,10 +929,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			name := m.apps[m.selected].Name
 			var filter *argocd.ResourceRef
-			if m.focusResources && m.detail != nil && len(m.detail.Resources) > 0 {
-				r := m.detail.Resources[clamp(m.resourceSel, 0, len(m.detail.Resources)-1)]
-				ref := argocd.ResourceRef{Group: r.Group, Kind: r.Kind, Name: r.Name, Namespace: r.Namespace, Version: r.Version}
-				filter = &ref
+			if m.focusResources {
+				if r, ok := m.selectedResource(); ok {
+					ref := argocd.ResourceRef{Group: r.Group, Kind: r.Kind, Name: r.Name, Namespace: r.Namespace, Version: r.Version}
+					filter = &ref
+				}
 			}
 			dv := newDiffModel(m.styles, m.client, name, filter)
 			dv.setSize(m.width-4, m.height-4)
@@ -1047,6 +1091,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusLine = "edit app"
 			return m, nil
 		case key.Matches(msg, m.keys.Filter):
+			if m.focusResources {
+				m.resourceSearchActive = true
+				m.resourceSearchInput.SetValue("")
+				m.resourceSearchInput.Focus()
+				m.statusLine = "search resources"
+				return m, nil
+			}
 			m.filterActive = true
 			m.filterInput.Focus()
 			return m, nil
@@ -1074,7 +1125,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case key.Matches(msg, m.keys.Down):
 			if m.focusResources {
-				if m.detail != nil && m.resourceSel < len(m.detail.Resources)-1 {
+				nodes := m.visibleResourceNodes()
+				if m.resourceSel < len(nodes)-1 {
 					m.resourceSel++
 				}
 				return m, nil
@@ -1405,7 +1457,7 @@ func (m Model) renderMain(w, h int) string {
 		blankIfEmpty(app.Path, "—"),
 		blankIfEmpty(app.Revision, "—"),
 		blankIfEmpty(app.Cluster, "—"),
-		renderResources(app.Resources, m.resourceSel, m.focusResources, m.styles),
+		m.renderResourceTree(app),
 		m.statusLine,
 		detailBlock,
 	)
@@ -1950,43 +2002,215 @@ func (m Model) renderEditWizard() string {
 	}
 }
 
-func renderResources(rs []argocd.Resource, selected int, focus bool, st styles) string {
-	if len(rs) == 0 {
+type resourceTreeNode struct {
+	key         string
+	label       string
+	depth       int
+	isGroup     bool
+	resourceIdx int
+	parentKey   string
+}
+
+func (m Model) renderResourceTree(app argocd.Application) string {
+	nodes := m.visibleResourceNodesFor(app)
+	if len(nodes) == 0 {
 		return "  (none yet)"
 	}
-	lines := make([]string, 0, len(rs)+1)
-	lines = append(lines, "  (tab to focus resources, enter/v to view)")
-	for i, r := range rs {
-		kind := r.Kind
-		if r.Group != "" {
-			kind = r.Group + "/" + r.Kind
-		}
-		health := r.Health
-		if health == "" {
-			health = "—"
-		}
-		status := r.Status
-		if status == "" {
-			status = "—"
-		}
-		ns := r.Namespace
-		if ns == "" {
-			ns = "—"
-		}
+
+	hints := []string{"  (tab=focus  space=collapse  z=zoom  /=search  enter/v=view  l=logs)"}
+	if m.resourceZoom != "" {
+		hints = append(hints, m.styles.StatusWarn.Render("  [zoom] press z to reset"))
+	}
+	if m.resourceSearchActive {
+		hints = append(hints, "  search: "+m.resourceSearchInput.View())
+	}
+
+	lines := append([]string{}, hints...)
+	for i, n := range nodes {
+		indent := strings.Repeat("  ", n.depth)
 		prefix := "  "
-		style := st.SidebarItem
-		if i == selected {
+		style := m.styles.SidebarItem
+		if i == m.resourceSel {
 			prefix = "▶ "
-			if focus {
-				style = st.SidebarSelected
+			if m.focusResources {
+				style = m.styles.SidebarSelected
 			} else {
-				style = st.SidebarTitle
+				style = m.styles.SidebarTitle
 			}
 		}
-		lines = append(lines, style.Render(fmt.Sprintf("%s%s/%s (%s) [%s/%s]", prefix, kind, r.Name, ns, health, status)))
+		label := n.label
+		if n.isGroup {
+			collapsed := m.resourceCollapsed[n.key]
+			marker := "▾"
+			if collapsed {
+				marker = "▸"
+			}
+			label = marker + " " + label
+		} else {
+			// Add quick status coloring.
+			r := app.Resources[n.resourceIdx]
+			if strings.TrimSpace(r.Status) != "" && !strings.EqualFold(r.Status, "synced") {
+				label = m.styles.StatusWarn.Render(label)
+			}
+			if strings.EqualFold(r.Health, "degraded") || strings.EqualFold(r.Health, "missing") {
+				label = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(label)
+			}
+		}
+		lines = append(lines, style.Render(indent+prefix+label))
 	}
 	return strings.Join(lines, "\n")
 }
+
+func (m Model) visibleResourceNodes() []resourceTreeNode {
+	if m.detail == nil {
+		return nil
+	}
+	return m.visibleResourceNodesFor(*m.detail)
+}
+
+func (m Model) visibleResourceNodesFor(app argocd.Application) []resourceTreeNode {
+	rs := app.Resources
+	if len(rs) == 0 {
+		return nil
+	}
+
+	nsOrder := make([]string, 0)
+	seenNS := map[string]bool{}
+	for _, r := range rs {
+		ns := r.Namespace
+		if ns == "" {
+			ns = "cluster"
+		}
+		if !seenNS[ns] {
+			seenNS[ns] = true
+			nsOrder = append(nsOrder, ns)
+		}
+	}
+	sort.Strings(nsOrder)
+
+	// Build kind groups within namespaces.
+	nodes := make([]resourceTreeNode, 0)
+	for _, ns := range nsOrder {
+		nsKey := "ns:" + ns
+		if m.resourceZoom != "" && !strings.HasPrefix(m.resourceZoom, nsKey) {
+			// Zoomed elsewhere.
+			continue
+		}
+		nodes = append(nodes, resourceTreeNode{key: nsKey, label: "Namespace: " + ns, depth: 0, isGroup: true})
+
+		kindKeys := make([]string, 0)
+		kindMap := map[string][]int{}
+		for i, r := range rs {
+			rns := r.Namespace
+			if rns == "" {
+				rns = "cluster"
+			}
+			if rns != ns {
+				continue
+			}
+			k := r.Kind
+			if r.Group != "" {
+				k = r.Group + "/" + r.Kind
+			}
+			if _, ok := kindMap[k]; !ok {
+				kindKeys = append(kindKeys, k)
+			}
+			kindMap[k] = append(kindMap[k], i)
+		}
+		sort.Strings(kindKeys)
+		for _, k := range kindKeys {
+			kKey := nsKey + "/kind:" + k
+			if m.resourceZoom != "" && m.resourceZoom != kKey {
+				continue
+			}
+			nodes = append(nodes, resourceTreeNode{key: kKey, parentKey: nsKey, label: k, depth: 1, isGroup: true})
+			if m.resourceCollapsed[kKey] {
+				continue
+			}
+			idxs := kindMap[k]
+			sort.SliceStable(idxs, func(i, j int) bool { return rs[idxs[i]].Name < rs[idxs[j]].Name })
+			for _, ri := range idxs {
+				r := rs[ri]
+				label := fmt.Sprintf("%s [%s/%s]", r.Name, blankIfEmpty(r.Health, "—"), blankIfEmpty(r.Status, "—"))
+				nodes = append(nodes, resourceTreeNode{key: kKey + "/" + r.Name, parentKey: kKey, label: label, depth: 2, isGroup: false, resourceIdx: ri})
+			}
+		}
+	}
+	return nodes
+}
+
+func (m *Model) toggleResourceCollapse() {
+	nodes := m.visibleResourceNodes()
+	if len(nodes) == 0 {
+		return
+	}
+	n := nodes[clamp(m.resourceSel, 0, len(nodes)-1)]
+	if !n.isGroup {
+		return
+	}
+	if m.resourceCollapsed == nil {
+		m.resourceCollapsed = map[string]bool{}
+	}
+	m.resourceCollapsed[n.key] = !m.resourceCollapsed[n.key]
+}
+
+func (m *Model) toggleResourceZoom() {
+	nodes := m.visibleResourceNodes()
+	if len(nodes) == 0 {
+		return
+	}
+	cur := nodes[clamp(m.resourceSel, 0, len(nodes)-1)]
+	zoomKey := ""
+	if cur.isGroup {
+		zoomKey = cur.key
+	} else {
+		zoomKey = cur.parentKey
+	}
+	if m.resourceZoom == zoomKey {
+		m.resourceZoom = ""
+	} else {
+		m.resourceZoom = zoomKey
+		m.resourceSel = 0
+	}
+}
+
+func (m *Model) jumpToResourceMatch(q string) {
+	q = strings.ToLower(strings.TrimSpace(q))
+	if q == "" {
+		return
+	}
+	if m.detail == nil {
+		return
+	}
+	nodes := m.visibleResourceNodes()
+	for i, n := range nodes {
+		if strings.Contains(strings.ToLower(n.label), q) {
+			m.resourceSel = i
+			m.statusLine = "jumped to resource match"
+			return
+		}
+	}
+	m.statusLine = "no resource match"
+}
+
+func (m Model) selectedResource() (argocd.Resource, bool) {
+	if m.detail == nil {
+		return argocd.Resource{}, false
+	}
+	nodes := m.visibleResourceNodes()
+	if len(nodes) == 0 {
+		return argocd.Resource{}, false
+	}
+	n := nodes[clamp(m.resourceSel, 0, len(nodes)-1)]
+	if n.isGroup {
+		return argocd.Resource{}, false
+	}
+	if n.resourceIdx < 0 || n.resourceIdx >= len(m.detail.Resources) {
+		return argocd.Resource{}, false
+	}
+	return m.detail.Resources[n.resourceIdx], true
+}
+
 
 func min(a, b int) int {
 	if a < b {
