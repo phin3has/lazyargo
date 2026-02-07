@@ -586,12 +586,46 @@ func (c *HTTPClient) ListEvents(ctx context.Context, appName string) ([]Event, e
 }
 
 func (c *HTTPClient) PodLogs(ctx context.Context, appName, podName, container string, follow bool) (io.ReadCloser, error) {
-	_ = ctx
-	_ = appName
-	_ = podName
-	_ = container
-	_ = follow
-	return nil, fmt.Errorf("pod logs not implemented")
+	if err := c.ensureLogin(ctx); err != nil {
+		return nil, err
+	}
+
+	u, err := url.Parse(c.Server)
+	if err != nil {
+		return nil, fmt.Errorf("invalid server url: %w", err)
+	}
+	u.Path = strings.TrimRight(u.Path, "/") + "/api/v1/applications/" + url.PathEscape(appName) + "/pods/" + url.PathEscape(podName) + "/logs"
+	q := u.Query()
+	if container != "" {
+		q.Set("container", container)
+	}
+	if follow {
+		q.Set("follow", "true")
+	}
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	if tok := c.token(); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
+
+	res, err := c.client().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		b, _ := io.ReadAll(res.Body)
+		_ = res.Body.Close()
+		return nil, fmt.Errorf("argocd api GET logs failed: %s: %s", res.Status, strings.TrimSpace(string(b)))
+	}
+	// Caller must close.
+	return res.Body, nil
 }
 
 func (c *HTTPClient) ServerSideDiff(ctx context.Context, appName string) ([]DiffResult, error) {

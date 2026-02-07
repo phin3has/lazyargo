@@ -102,6 +102,7 @@ type Model struct {
 
 	resourceDetails *resourceDetailsModel
 	eventsView      *eventsModel
+	logsView        *logsModel
 
 	detail     *argocd.Application
 	detailErr  error
@@ -421,6 +422,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			ev.setSize(msg.Width-2, msg.Height-2)
 			m.eventsView = &ev
 		}
+		if m.logsView != nil {
+			lv := *m.logsView
+			lv.setSize(msg.Width-2, msg.Height-2)
+			m.logsView = &lv
+		}
 		return m, nil
 	case appsMsg:
 		m.err = msg.err
@@ -586,6 +592,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			ev := *m.eventsView
 			ev, cmd = ev.Update(msg)
 			m.eventsView = &ev
+			return m, cmd
+		}
+		if m.logsView != nil {
+			switch msg.String() {
+			case "esc", "q":
+				m.logsView = nil
+				m.statusLine = "closed logs"
+				return m, nil
+			}
+			var cmd tea.Cmd
+			lv := *m.logsView
+			lv, cmd = lv.Update(msg)
+			m.logsView = &lv
 			return m, cmd
 		}
 
@@ -762,6 +781,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.eventsView = &ev
 			m.statusLine = "loading events…"
 			return m, ev.initCmd()
+		case msg.String() == "l" && m.focusResources:
+			if m.detail == nil || len(m.detail.Resources) == 0 {
+				return m, nil
+			}
+			r := m.detail.Resources[clamp(m.resourceSel, 0, len(m.detail.Resources)-1)]
+			if !strings.EqualFold(r.Kind, "pod") {
+				m.statusLine = "select a Pod to view logs"
+				return m, nil
+			}
+			lv := newLogsModel(m.styles, m.client, m.detail.Name, r.Name)
+			lv.setSize(m.width-4, m.height-4)
+			m.logsView = &lv
+			m.statusLine = "loading logs…"
+			return m, lv.initCmd()
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Help):
@@ -1115,6 +1148,9 @@ func (m Model) renderMain(w, h int) string {
 	}
 	if m.eventsView != nil {
 		return m.styles.Main.Width(w).Height(h).Render(m.eventsView.View())
+	}
+	if m.logsView != nil {
+		return m.styles.Main.Width(w).Height(h).Render(m.logsView.View())
 	}
 	if m.editModal {
 		return m.styles.Main.Width(w).Height(h).Render(m.renderEditWizard())
