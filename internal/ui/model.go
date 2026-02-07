@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -37,6 +38,9 @@ type Model struct {
 	driftOnly    bool
 
 	sortMode sortMode
+
+	serverLabel string
+	lastRefresh time.Time
 
 	syncModal          bool
 	syncTargets        []string
@@ -78,6 +82,11 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 	ti.CharLimit = 128
 	ti.Width = 24
 
+	serverLabel := cfg.ArgoCD.Server
+	if _, ok := client.(*argocd.MockClient); ok {
+		serverLabel = "mock"
+	}
+
 	m := Model{
 		cfg:         cfg,
 		client:      client,
@@ -86,6 +95,7 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 		help:        h,
 		filterInput: ti,
 		sortMode:    sortByName,
+		serverLabel: serverLabel,
 	}
 	return m
 }
@@ -153,6 +163,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detailErr = nil
 		if msg.err == nil {
 			m.appsAll = msg.apps
+			m.lastRefresh = time.Now().UTC()
 			m.applyFilter(false)
 			m.ensureSidebarSelectionVisible()
 			m.statusLine = fmt.Sprintf("loaded %d apps", len(m.appsAll))
@@ -329,10 +340,9 @@ func (m Model) View() string {
 	}
 	header := m.styles.Header.Width(m.width).Render(headerTitle)
 
-	helpView := m.help.View(m.keys)
-	helpBar := m.styles.HelpBar.Width(m.width).Render(helpView)
+	footer := m.renderFooter(m.width)
 
-	bodyHeight := m.height - lipgloss.Height(header) - lipgloss.Height(helpBar)
+	bodyHeight := m.height - lipgloss.Height(header) - lipgloss.Height(footer)
 	if bodyHeight < 0 {
 		bodyHeight = 0
 	}
@@ -352,7 +362,50 @@ func (m Model) View() string {
 
 	row := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, main)
 
-	return lipgloss.JoinVertical(lipgloss.Top, header, row, helpBar)
+	return lipgloss.JoinVertical(lipgloss.Top, header, row, footer)
+}
+
+func (m Model) renderFooter(w int) string {
+	drifted := 0
+	for _, a := range m.appsAll {
+		if a.Sync != "Synced" {
+			drifted++
+		}
+	}
+
+	ts := "never"
+	if !m.lastRefresh.IsZero() {
+		// Keep it compact.
+		ts = m.lastRefresh.Format("15:04:05Z")
+	}
+
+	label := func(s string) string { return m.styles.StatusLabel.Render(s) }
+	val := func(s string) string { return m.styles.StatusValue.Render(s) }
+
+	driftStyle := m.styles.StatusValue
+	if drifted > 0 {
+		driftStyle = m.styles.StatusWarn
+	}
+
+	leftParts := []string{
+		label("server:") + val(m.serverLabel),
+		label("refresh:") + val(ts),
+		label("apps:") + val(fmt.Sprintf("%d", len(m.appsAll))),
+		label("drift:") + driftStyle.Render(fmt.Sprintf("%d", drifted)),
+	}
+	if strings.TrimSpace(m.statusLine) != "" {
+		leftParts = append(leftParts, label("msg:")+val(m.statusLine))
+	}
+	left := strings.Join(leftParts, "  ")
+
+	right := m.help.View(m.keys)
+
+	gap := w - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		gap = 1
+	}
+	line := left + strings.Repeat(" ", gap) + right
+	return m.styles.StatusBar.Width(w).Render(line)
 }
 
 func (m Model) renderSidebar(w, h int) string {

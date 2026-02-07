@@ -10,6 +10,10 @@ type styles struct {
 	SidebarItem     lipgloss.Style
 	SidebarSelected lipgloss.Style
 	Main            lipgloss.Style
+	StatusBar       lipgloss.Style
+	StatusLabel     lipgloss.Style
+	StatusValue     lipgloss.Style
+	StatusWarn      lipgloss.Style
 	HelpBar         lipgloss.Style
 	Error           lipgloss.Style
 }
@@ -40,9 +44,21 @@ func newStyles() styles {
 			Border(border).
 			BorderForeground(lipgloss.Color("240")).
 			Padding(0, 1),
+		StatusBar: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("254")).
+			Background(lipgloss.Color("236")).
+			Padding(0, 1),
+		StatusLabel: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("250")).
+			Bold(true),
+		StatusValue: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("229")),
+		StatusWarn: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("203")).
+			Bold(true),
 		HelpBar: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Padding(0, 1),
-		Error: lipgloss.NewStyle().Foreground(lipgloss.Color("196")),
+		Error: lipgloss.NewStyle().Foreground(lipgloss.Color("196")), 
 	}
 }
