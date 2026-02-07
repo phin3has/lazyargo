@@ -56,6 +56,12 @@ type Model struct {
 	rollbackSelected int
 	rollbackConfirm  bool
 
+	terminateModal   bool
+	terminateApp     string
+	terminateLoading bool
+	terminateErr     error
+	terminateConfirm bool
+
 	detail     *argocd.Application
 	detailErr  error
 	statusLine string
@@ -145,6 +151,11 @@ type rollbackMsg struct {
 	err     error
 }
 
+type terminateMsg struct {
+	appName string
+	err     error
+}
+
 func (m Model) refreshCmd() tea.Cmd {
 	return func() tea.Msg {
 		apps, err := m.client.ListApplications(context.Background())
@@ -181,6 +192,13 @@ func (m Model) rollbackCmd(appName string, id int64) tea.Cmd {
 	return func() tea.Msg {
 		err := m.client.RollbackApplication(context.Background(), appName, id)
 		return rollbackMsg{appName: appName, err: err}
+	}
+}
+
+func (m Model) terminateCmd(appName string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.TerminateOperation(context.Background(), appName)
+		return terminateMsg{appName: appName, err: err}
 	}
 }
 
@@ -262,6 +280,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rollbackConfirm = false
 		m.statusLine = "rollback started"
 		return m, tea.Batch(m.refreshCmd())
+	case terminateMsg:
+		m.terminateLoading = false
+		m.terminateErr = msg.err
+		if msg.err != nil {
+			m.statusLine = "terminate failed"
+			return m, nil
+		}
+		m.terminateModal = false
+		m.terminateApp = ""
+		m.terminateConfirm = false
+		m.statusLine = "operation terminated"
+		return m, tea.Batch(m.refreshCmd())
 	case tea.KeyMsg:
 		if m.syncModal {
 			switch msg.String() {
@@ -279,6 +309,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.statusLine = "syncing…"
 				return m, m.syncBatchCmd(m.syncTargets, false)
+			}
+			return m, nil
+		}
+
+		if m.terminateModal {
+			switch msg.String() {
+			case "esc", "n":
+				m.terminateModal = false
+				m.terminateApp = ""
+				m.terminateLoading = false
+				m.terminateErr = nil
+				m.terminateConfirm = false
+				m.statusLine = "terminate cancelled"
+				return m, nil
+			case "enter":
+				if m.terminateLoading {
+					return m, nil
+				}
+				m.terminateConfirm = true
+				m.statusLine = "confirm terminate with y"
+				return m, nil
+			case "y":
+				if !m.terminateConfirm || m.terminateLoading {
+					return m, nil
+				}
+				m.terminateLoading = true
+				m.statusLine = "terminating operation…"
+				return m, m.terminateCmd(m.terminateApp)
 			}
 			return m, nil
 		}
@@ -422,6 +480,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rollbackConfirm = false
 			m.statusLine = "loading revisions…"
 			return m, m.loadRevisionsCmd(m.rollbackApp)
+		case key.Matches(msg, m.keys.TerminateOp):
+			if len(m.apps) == 0 {
+				return m, nil
+			}
+			name := m.apps[m.selected].Name
+			app := m.apps[m.selected]
+			if m.detail != nil && m.detail.Name == name {
+				app = *m.detail
+			}
+			if app.OperationState == nil {
+				m.statusLine = "no operation in progress"
+				return m, nil
+			}
+			m.terminateModal = true
+			m.terminateApp = name
+			m.terminateLoading = false
+			m.terminateErr = nil
+			m.terminateConfirm = false
+			m.statusLine = "terminate operation?"
+			return m, nil
 		case key.Matches(msg, m.keys.Filter):
 			m.filterActive = true
 			m.filterInput.Focus()
@@ -601,6 +679,21 @@ func (m Model) renderMain(w, h int) string {
 			"  • Ensure ARGOCD_AUTH_TOKEN is set\n" +
 			"  • If using https://localhost:8080 and you see TLS errors, use --insecure or ARGOCD_INSECURE=true\n\n" +
 			"Press 'r' to retry."
+		return m.styles.Main.Width(w).Height(h).Render(content)
+	}
+	if m.terminateModal {
+		lines := []string{fmt.Sprintf("Terminate operation: %s", m.terminateApp), ""}
+		if m.terminateErr != nil {
+			lines = append(lines, "Error:", m.terminateErr.Error(), "")
+		}
+		if m.terminateLoading {
+			lines = append(lines, "Terminating…")
+		} else if m.terminateConfirm {
+			lines = append(lines, "Confirm terminate? y=confirm, n/esc=cancel")
+		} else {
+			lines = append(lines, "Enter=select  y=confirm  n/esc=cancel")
+		}
+		content = strings.Join(lines, "\n")
 		return m.styles.Main.Width(w).Height(h).Render(content)
 	}
 	if m.rollbackModal {

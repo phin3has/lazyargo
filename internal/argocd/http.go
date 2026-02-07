@@ -186,6 +186,10 @@ func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard b
 			Sync struct {
 				Status string `json:"status"`
 			} `json:"sync"`
+			OperationState *struct {
+				Phase   string `json:"phase"`
+				Message string `json:"message"`
+			} `json:"operationState"`
 			Resources []struct {
 				Group     string `json:"group"`
 				Kind      string `json:"kind"`
@@ -249,17 +253,23 @@ func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard b
 		}
 	}
 
+	var op *OperationState
+	if resp.Status.OperationState != nil {
+		op = &OperationState{Phase: resp.Status.OperationState.Phase, Message: resp.Status.OperationState.Message}
+	}
+
 	return Application{
-		Name:      resp.Metadata.Name,
-		Namespace: resp.Spec.Destination.Namespace,
-		Project:   resp.Spec.Project,
-		Health:    resp.Status.Health.Status,
-		Sync:      resp.Status.Sync.Status,
-		RepoURL:   resp.Spec.Source.RepoURL,
-		Revision:  resp.Spec.Source.TargetRevision,
-		Path:      resp.Spec.Source.Path,
-		Cluster:   resp.Spec.Destination.Server,
-		Resources: resources,
+		Name:           resp.Metadata.Name,
+		Namespace:      resp.Spec.Destination.Namespace,
+		Project:        resp.Spec.Project,
+		Health:         resp.Status.Health.Status,
+		Sync:           resp.Status.Sync.Status,
+		RepoURL:        resp.Spec.Source.RepoURL,
+		Revision:       resp.Spec.Source.TargetRevision,
+		Path:           resp.Spec.Source.Path,
+		Cluster:        resp.Spec.Destination.Server,
+		Resources:      resources,
+		OperationState: op,
 	}, nil
 }
 
@@ -314,6 +324,13 @@ func (c *HTTPClient) RollbackApplication(ctx context.Context, name string, revis
 		ID int64 `json:"id"`
 	}{ID: revisionID}
 	return c.doJSON(ctx, http.MethodPost, "/api/v1/applications/"+url.PathEscape(name)+"/rollback", payload, nil)
+}
+
+func (c *HTTPClient) TerminateOperation(ctx context.Context, name string) error {
+	if err := c.ensureLogin(ctx); err != nil {
+		return err
+	}
+	return c.doJSON(ctx, http.MethodDelete, "/api/v1/applications/"+url.PathEscape(name)+"/operation", nil, nil)
 }
 
 func (c *HTTPClient) SyncApplication(ctx context.Context, name string, dryRun bool) error {

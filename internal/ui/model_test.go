@@ -50,6 +50,12 @@ func (f *fakeClient) RollbackApplication(ctx context.Context, name string, revis
 	return nil
 }
 
+func (f *fakeClient) TerminateOperation(ctx context.Context, name string) error {
+	_ = ctx
+	_ = name
+	return nil
+}
+
 func (f *fakeClient) SyncApplication(ctx context.Context, name string, dryRun bool) error {
 	f.syncCalls = append(f.syncCalls, syncCall{name: name, dryRun: dryRun})
 	if f.syncErr == nil {

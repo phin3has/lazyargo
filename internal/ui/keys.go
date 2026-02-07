@@ -12,6 +12,7 @@ type keyMap struct {
 	SyncBatch     key.Binding
 	SyncApp       key.Binding
 	Rollback      key.Binding
+	TerminateOp   key.Binding
 	Filter        key.Binding
 	Sort          key.Binding
 	Clear         key.Binding
@@ -20,14 +21,14 @@ type keyMap struct {
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Refresh, k.RefreshDetail, k.RefreshHard, k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Rollback, k.Filter, k.Sort, k.Help, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.Refresh, k.RefreshDetail, k.RefreshHard, k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Rollback, k.TerminateOp, k.Filter, k.Sort, k.Help, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down},
 		{k.Refresh, k.RefreshDetail, k.RefreshHard},
-		{k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Rollback, k.Filter, k.Sort, k.Clear},
+		{k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Rollback, k.TerminateOp, k.Filter, k.Sort, k.Clear},
 		{k.Help, k.Quit},
 	}
 }
@@ -69,6 +70,10 @@ func newKeyMap() keyMap {
 		Rollback: key.NewBinding(
 			key.WithKeys("b"),
 			key.WithHelp("b", "rollback"),
+		),
+		TerminateOp: key.NewBinding(
+			key.WithKeys("x"),
+			key.WithHelp("x", "terminate op"),
 		),
 		Filter: key.NewBinding(
 			key.WithKeys("/"),

@@ -11,6 +11,8 @@ type Application struct {
 	Health    string // e.g. Healthy, Degraded
 	Sync      string // e.g. Synced, OutOfSync
 
+	OperationState *OperationState
+
 	// Optional fields (may be empty depending on API permissions / list endpoint)
 	RepoURL  string
 	Revision string
@@ -19,6 +21,11 @@ type Application struct {
 
 	// Resources are usually populated by GetApplication.
 	Resources []Resource
+}
+
+type OperationState struct {
+	Phase   string
+	Message string
 }
 
 type Revision struct {
@@ -52,6 +59,7 @@ type Client interface {
 
 	ListRevisions(ctx context.Context, name string) ([]Revision, error)
 	RollbackApplication(ctx context.Context, name string, revisionID int64) error
+	TerminateOperation(ctx context.Context, name string) error
 
 	// SyncApplication triggers an Argo CD sync operation.
 	// When dryRun is true, the server should validate and simulate the operation without mutating state.

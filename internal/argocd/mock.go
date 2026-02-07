@@ -29,15 +29,16 @@ func NewMockClient() *MockClient {
 			},
 		},
 		{
-			Name:      "orders-worker",
-			Namespace: "orders",
-			Project:   "default",
-			Health:    "Progressing",
-			Sync:      "Synced",
-			RepoURL:   "https://github.com/example/platform",
-			Path:      "apps/orders",
-			Revision:  "main",
-			Cluster:   "https://kubernetes.default.svc",
+			Name:           "orders-worker",
+			Namespace:      "orders",
+			Project:        "default",
+			Health:         "Progressing",
+			Sync:           "Synced",
+			OperationState: &OperationState{Phase: "Running", Message: "syncing"},
+			RepoURL:        "https://github.com/example/platform",
+			Path:           "apps/orders",
+			Revision:       "main",
+			Cluster:        "https://kubernetes.default.svc",
 			Resources: []Resource{
 				{Group: "apps", Kind: "Deployment", Name: "orders-worker", Namespace: "orders", Status: "Synced", Health: "Progressing"},
 				{Group: "batch", Kind: "CronJob", Name: "orders-reconciler", Namespace: "orders", Status: "Synced", Health: "Healthy"},
@@ -138,6 +139,17 @@ func (m *MockClient) RollbackApplication(ctx context.Context, name string, revis
 		if m.apps[i].Name == name {
 			m.apps[i].Sync = "OutOfSync"
 			_ = revisionID
+			return nil
+		}
+	}
+	return fmt.Errorf("application not found: %s", name)
+}
+
+func (m *MockClient) TerminateOperation(ctx context.Context, name string) error {
+	_ = ctx
+	for i := range m.apps {
+		if m.apps[i].Name == name {
+			m.apps[i].OperationState = nil
 			return nil
 		}
 	}
