@@ -25,6 +25,22 @@ func NewMockClient() *MockClient {
 				{Group: "apps", Kind: "Deployment", Name: "payments-api", Namespace: "payments", Status: "Synced", Health: "Healthy"},
 				{Group: "", Kind: "Service", Name: "payments-api", Namespace: "payments", Status: "Synced", Health: "Healthy"},
 				{Group: "", Kind: "ConfigMap", Name: "payments-config", Namespace: "payments", Status: "Synced", Health: "Healthy"},
+				{Group: "autoscaling", Kind: "HorizontalPodAutoscaler", Name: "payments-api", Namespace: "payments", Status: "Synced", Health: "Healthy"},
+			},
+		},
+		{
+			Name:      "orders-worker",
+			Namespace: "orders",
+			Project:   "default",
+			Health:    "Progressing",
+			Sync:      "Synced",
+			RepoURL:   "https://github.com/example/platform",
+			Path:      "apps/orders",
+			Revision:  "main",
+			Cluster:   "https://kubernetes.default.svc",
+			Resources: []Resource{
+				{Group: "apps", Kind: "Deployment", Name: "orders-worker", Namespace: "orders", Status: "Synced", Health: "Progressing"},
+				{Group: "batch", Kind: "CronJob", Name: "orders-reconciler", Namespace: "orders", Status: "Synced", Health: "Healthy"},
 			},
 		},
 		{
@@ -41,6 +57,7 @@ func NewMockClient() *MockClient {
 				{Group: "apps", Kind: "Deployment", Name: "web-frontend", Namespace: "web", Status: "OutOfSync", Health: "Healthy"},
 				{Group: "", Kind: "Service", Name: "web-frontend", Namespace: "web", Status: "Synced", Health: "Healthy"},
 				{Group: "networking.k8s.io", Kind: "Ingress", Name: "web", Namespace: "web", Status: "OutOfSync", Health: "Healthy"},
+				{Group: "", Kind: "Secret", Name: "web-tls", Namespace: "web", Status: "OutOfSync", Health: "—"},
 			},
 		},
 		{
@@ -57,6 +74,22 @@ func NewMockClient() *MockClient {
 				{Group: "apps", Kind: "StatefulSet", Name: "loki", Namespace: "ops", Status: "Synced", Health: "Degraded"},
 				{Group: "apps", Kind: "Deployment", Name: "grafana", Namespace: "ops", Status: "Synced", Health: "Healthy"},
 				{Group: "", Kind: "Service", Name: "grafana", Namespace: "ops", Status: "Synced", Health: "Healthy"},
+				{Group: "", Kind: "Job", Name: "migrate-dashboards", Namespace: "ops", Status: "Synced", Health: "Healthy", Hook: true},
+			},
+		},
+		{
+			Name:      "cluster-addons",
+			Namespace: "kube-system",
+			Project:   "platform",
+			Health:    "Missing",
+			Sync:      "Unknown",
+			RepoURL:   "https://github.com/example/ops",
+			Path:      "clusters/dev/addons",
+			Revision:  "v1.2.3",
+			Cluster:   "https://kubernetes.default.svc",
+			Resources: []Resource{
+				{Group: "apps", Kind: "DaemonSet", Name: "node-exporter", Namespace: "kube-system", Status: "Unknown", Health: "Missing"},
+				{Group: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: "addons-read", Namespace: "", Status: "Unknown", Health: "—"},
 			},
 		},
 	}}
