@@ -687,17 +687,44 @@ func (c *HTTPClient) ServerSideDiff(ctx context.Context, appName string) ([]Diff
 }
 
 func (c *HTTPClient) RevisionMetadata(ctx context.Context, appName, revision string) (RevisionMeta, error) {
-	_ = ctx
-	_ = appName
-	_ = revision
-	return RevisionMeta{}, fmt.Errorf("revision metadata not implemented")
+	if err := c.ensureLogin(ctx); err != nil {
+		return RevisionMeta{}, err
+	}
+	var resp struct {
+		Author  string   `json:"author"`
+		Date    string   `json:"date"`
+		Tags    []string `json:"tags"`
+		Message string   `json:"message"`
+	}
+	path := "/api/v1/applications/" + url.PathEscape(appName) + "/revisions/" + url.PathEscape(revision) + "/metadata"
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		return RevisionMeta{}, err
+	}
+	return RevisionMeta{Author: resp.Author, Date: resp.Date, Tags: resp.Tags, Message: resp.Message}, nil
 }
 
 func (c *HTTPClient) ChartDetails(ctx context.Context, appName, revision string) (ChartMeta, error) {
-	_ = ctx
-	_ = appName
-	_ = revision
-	return ChartMeta{}, fmt.Errorf("chart details not implemented")
+	if err := c.ensureLogin(ctx); err != nil {
+		return ChartMeta{}, err
+	}
+	var resp struct {
+		Description string `json:"description"`
+		Home        string `json:"home"`
+		Maintainers []struct {
+			Name string `json:"name"`
+		} `json:"maintainers"`
+	}
+	path := "/api/v1/applications/" + url.PathEscape(appName) + "/revisions/" + url.PathEscape(revision) + "/chartdetails"
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		return ChartMeta{}, err
+	}
+	m := make([]string, 0, len(resp.Maintainers))
+	for _, it := range resp.Maintainers {
+		if it.Name != "" {
+			m = append(m, it.Name)
+		}
+	}
+	return ChartMeta{Description: resp.Description, Maintainers: m, Home: resp.Home}, nil
 }
 
 func (c *HTTPClient) GetSyncWindows(ctx context.Context, appName string) ([]SyncWindow, error) {

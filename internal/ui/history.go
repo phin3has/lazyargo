@@ -120,3 +120,11 @@ func (m *historyModel) ensureVisible() {
 	}
 	m.vp.SetYOffset(max(0, m.selected*4-2))
 }
+
+func (m historyModel) SelectedRevision() string {
+	if len(m.app.History) == 0 {
+		return ""
+	}
+	idx := clamp(m.selected, 0, len(m.app.History)-1)
+	return strings.TrimSpace(m.app.History[idx].Revision)
+}

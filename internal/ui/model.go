@@ -105,6 +105,7 @@ type Model struct {
 	logsView        *logsModel
 	diffView        *diffModel
 	historyView     *historyModel
+	revisionView    *revisionDetailsModel
 
 	detail     *argocd.Application
 	detailErr  error
@@ -439,6 +440,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			hv.setSize(msg.Width-2, msg.Height-2)
 			m.historyView = &hv
 		}
+		if m.revisionView != nil {
+			rv := *m.revisionView
+			rv.setSize(msg.Width-2, msg.Height-2)
+			m.revisionView = &rv
+		}
 		return m, nil
 	case appsMsg:
 		m.err = msg.err
@@ -639,13 +645,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusLine = "closed history"
 				return m, nil
 			case "enter":
-				// MET-61 will add revision detail. For now just acknowledge.
-				m.statusLine = "revision details not implemented yet"
+				appName := m.historyView.app.Name
+				rev := m.historyView.SelectedRevision()
+				if rev == "" {
+					m.statusLine = "no revision selected"
+					return m, nil
+				}
+				rv := newRevisionDetailsModel(m.styles, m.client, appName, rev)
+				rv.setSize(m.width-4, m.height-4)
+				m.revisionView = &rv
+				m.statusLine = "loading revision details…"
+				return m, rv.initCmd()
 			}
 			var cmd tea.Cmd
 			hv := *m.historyView
 			hv, cmd = hv.Update(msg)
 			m.historyView = &hv
+			return m, cmd
+		}
+		if m.revisionView != nil {
+			switch msg.String() {
+			case "esc", "q":
+				m.revisionView = nil
+				m.statusLine = "closed revision details"
+				return m, nil
+			}
+			var cmd tea.Cmd
+			rv := *m.revisionView
+			rv, cmd = rv.Update(msg)
+			m.revisionView = &rv
 			return m, cmd
 		}
 
@@ -1225,6 +1253,9 @@ func (m Model) renderMain(w, h int) string {
 	}
 	if m.diffView != nil {
 		return m.styles.Main.Width(w).Height(h).Render(m.diffView.View())
+	}
+	if m.revisionView != nil {
+		return m.styles.Main.Width(w).Height(h).Render(m.revisionView.View())
 	}
 	if m.historyView != nil {
 		return m.styles.Main.Width(w).Height(h).Render(m.historyView.View())
