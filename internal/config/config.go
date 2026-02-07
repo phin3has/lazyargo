@@ -23,11 +23,14 @@ type Config struct {
 	UI struct {
 		SidebarWidth int `yaml:"sidebarWidth"`
 	} `yaml:"ui"`
+
+	LogLevel string `yaml:"logLevel"`
 }
 
 func Default() Config {
 	var c Config
 	c.UI.SidebarWidth = 28
+	c.LogLevel = "info"
 
 	// Common defaults so a port-forward (or local argocd-server) works with minimal config.
 	// Argo CD commonly serves HTTPS on 443; port-forward examples often map to https://localhost:8080.
@@ -95,6 +98,9 @@ func Load(path string) (Config, error) {
 	if v := os.Getenv("ARGOCD_INSECURE"); v != "" {
 		// Matches argocd CLI: ARGOCD_INSECURE=true
 		c.ArgoCD.InsecureSkipVerify = parseBoolish(v)
+	}
+	if v := os.Getenv("LAZYARGO_LOG_LEVEL"); v != "" {
+		c.LogLevel = v
 	}
 
 	return c, nil
