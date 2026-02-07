@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	"log/slog"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,7 +21,25 @@ func firstNonEmpty(v ...string) string {
 	return ""
 }
 
+func parseLogLevel(s string) slog.Level {
+	switch s {
+	case "debug":
+		return slog.LevelDebug
+	case "info", "":
+		return slog.LevelInfo
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
 func main() {
+	// Set a reasonable default logger early so startup/config errors are structured.
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
 	var (
 		configPath string
 		useMock    bool
@@ -45,7 +63,7 @@ func main() {
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "config error:", err)
+		slog.Error("config error", "err", err)
 		os.Exit(1)
 	}
 
@@ -62,6 +80,10 @@ func main() {
 	if logLevel != "" {
 		cfg.LogLevel = logLevel
 	}
+
+	// Configure the logger after config+flags are applied.
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: parseLogLevel(cfg.LogLevel)})))
+
 	// Username/password are only for future/optional flows.
 	usr := firstNonEmpty(username, os.Getenv("ARGOCD_USERNAME"))
 	pwd := firstNonEmpty(password, os.Getenv("ARGOCD_PASSWORD"))
@@ -69,6 +91,7 @@ func main() {
 	var client argocd.Client
 	if useMock || cfg.ArgoCD.Server == "" {
 		client = argocd.NewMockClient()
+		slog.Info("using mock argocd client")
 	} else {
 		h := argocd.NewHTTPClient(cfg.ArgoCD.Server)
 		h.AuthToken = cfg.ArgoCD.Token
@@ -82,7 +105,7 @@ func main() {
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		slog.Error("tui exited with error", "err", err)
 		os.Exit(1)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,14 +24,16 @@ import (
 //
 // NOTE: This is intentionally small; we'll grow it as the TUI matures.
 type HTTPClient struct {
-	Server     string
-	AuthToken  string
-	Username   string
-	Password   string
-	Timeout    time.Duration
-	HTTP       *http.Client
-	UserAgent  string
-	Insecure   bool // placeholder; only relevant when using HTTPS + custom TLS config
+	Server    string
+	AuthToken string
+	Username  string
+	Password  string
+	Timeout   time.Duration
+	HTTP      *http.Client
+	UserAgent string
+	Insecure  bool // placeholder; only relevant when using HTTPS + custom TLS config
+	Logger    *slog.Logger
+
 	loginToken string
 }
 
@@ -39,6 +42,7 @@ func NewHTTPClient(server string) *HTTPClient {
 		Server:    strings.TrimRight(server, "/"),
 		Timeout:   10 * time.Second,
 		UserAgent: "lazyargo/0.0.1",
+		Logger:    slog.Default(),
 	}
 }
 
@@ -295,7 +299,14 @@ func (c *HTTPClient) doJSON(ctx context.Context, method, path string, in any, ou
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 
+	logger := c.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	start := time.Now()
 	res, err := c.client().Do(req)
+	dur := time.Since(start)
 	if err != nil {
 		// Common local dev case: https://localhost:8080 via port-forward with a cert that isn't trusted.
 		hint := ""
@@ -303,13 +314,39 @@ func (c *HTTPClient) doJSON(ctx context.Context, method, path string, in any, ou
 		if strings.Contains(es, "x509") || strings.Contains(es, "certificate") {
 			hint = " (TLS error: try --insecure or set ARGOCD_INSECURE=true)"
 		}
+
+		logger.Error("argocd request failed",
+			"method", method,
+			"path", path,
+			"url", u.String(),
+			"duration_ms", dur.Milliseconds(),
+			"err", err,
+		)
 		return fmt.Errorf("argocd request failed: %w%s", err, hint)
 	}
 	defer res.Body.Close()
 
 	b, _ := io.ReadAll(res.Body)
+
+	logger.Debug("argocd request",
+		"method", method,
+		"path", path,
+		"status", res.StatusCode,
+		"duration_ms", dur.Milliseconds(),
+	)
+
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("argocd api %s %s failed: %s: %s", method, path, res.Status, strings.TrimSpace(string(b)))
+		msg := strings.TrimSpace(string(b))
+		if len(msg) > 500 {
+			msg = msg[:500] + "…"
+		}
+		logger.Warn("argocd non-2xx response",
+			"method", method,
+			"path", path,
+			"status", res.StatusCode,
+			"response", msg,
+		)
+		return fmt.Errorf("argocd api %s %s failed: %s: %s", method, path, res.Status, msg)
 	}
 	if out == nil {
 		return nil
