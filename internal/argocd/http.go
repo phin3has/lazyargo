@@ -629,9 +629,45 @@ func (c *HTTPClient) PodLogs(ctx context.Context, appName, podName, container st
 }
 
 func (c *HTTPClient) ServerSideDiff(ctx context.Context, appName string) ([]DiffResult, error) {
-	_ = ctx
-	_ = appName
-	return nil, fmt.Errorf("diff not implemented")
+	if err := c.ensureLogin(ctx); err != nil {
+		return nil, err
+	}
+
+	type diffItem struct {
+		Diff     string `json:"diff"`
+		Modified bool   `json:"modified"`
+		Resource struct {
+			Group     string `json:"group"`
+			Kind      string `json:"kind"`
+			Name      string `json:"name"`
+			Namespace string `json:"namespace"`
+			Version   string `json:"version"`
+		} `json:"resource"`
+	}
+
+	// The API shape varies across Argo CD versions.
+	var resp struct {
+		Items []diffItem `json:"items"`
+		Diffs []diffItem `json:"diffs"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(appName)+"/server-side-diff", nil, &resp); err != nil {
+		return nil, err
+	}
+
+	items := resp.Items
+	if len(items) == 0 {
+		items = resp.Diffs
+	}
+
+	out := make([]DiffResult, 0, len(items))
+	for _, it := range items {
+		out = append(out, DiffResult{
+			Ref: ResourceRef{Group: it.Resource.Group, Kind: it.Resource.Kind, Name: it.Resource.Name, Namespace: it.Resource.Namespace, Version: it.Resource.Version},
+			Diff:     it.Diff,
+			Modified: it.Modified,
+		})
+	}
+	return out, nil
 }
 
 func (c *HTTPClient) RevisionMetadata(ctx context.Context, appName, revision string) (RevisionMeta, error) {

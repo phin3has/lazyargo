@@ -103,6 +103,7 @@ type Model struct {
 	resourceDetails *resourceDetailsModel
 	eventsView      *eventsModel
 	logsView        *logsModel
+	diffView        *diffModel
 
 	detail     *argocd.Application
 	detailErr  error
@@ -427,6 +428,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			lv.setSize(msg.Width-2, msg.Height-2)
 			m.logsView = &lv
 		}
+		if m.diffView != nil {
+			dv := *m.diffView
+			dv.setSize(msg.Width-2, msg.Height-2)
+			m.diffView = &dv
+		}
 		return m, nil
 	case appsMsg:
 		m.err = msg.err
@@ -605,6 +611,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			lv := *m.logsView
 			lv, cmd = lv.Update(msg)
 			m.logsView = &lv
+			return m, cmd
+		}
+		if m.diffView != nil {
+			switch msg.String() {
+			case "esc", "q":
+				m.diffView = nil
+				m.statusLine = "closed diff"
+				return m, nil
+			}
+			var cmd tea.Cmd
+			dv := *m.diffView
+			dv, cmd = dv.Update(msg)
+			m.diffView = &dv
 			return m, cmd
 		}
 
@@ -797,6 +816,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, lv.initCmd()
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
+		case key.Matches(msg, m.keys.Diff):
+			if len(m.apps) == 0 {
+				return m, nil
+			}
+			name := m.apps[m.selected].Name
+			var filter *argocd.ResourceRef
+			if m.focusResources && m.detail != nil && len(m.detail.Resources) > 0 {
+				r := m.detail.Resources[clamp(m.resourceSel, 0, len(m.detail.Resources)-1)]
+				ref := argocd.ResourceRef{Group: r.Group, Kind: r.Kind, Name: r.Name, Namespace: r.Namespace, Version: r.Version}
+				filter = &ref
+			}
+			dv := newDiffModel(m.styles, m.client, name, filter)
+			dv.setSize(m.width-4, m.height-4)
+			m.diffView = &dv
+			m.statusLine = "loading diff…"
+			return m, dv.initCmd()
 		case key.Matches(msg, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
 			return m, nil
@@ -1151,6 +1186,9 @@ func (m Model) renderMain(w, h int) string {
 	}
 	if m.logsView != nil {
 		return m.styles.Main.Width(w).Height(h).Render(m.logsView.View())
+	}
+	if m.diffView != nil {
+		return m.styles.Main.Width(w).Height(h).Render(m.diffView.View())
 	}
 	if m.editModal {
 		return m.styles.Main.Width(w).Height(h).Render(m.renderEditWizard())
