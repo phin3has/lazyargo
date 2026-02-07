@@ -287,6 +287,11 @@ func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard b
 		history = append(history, SyncHistoryEntry{Revision: h.Revision, DeployedAt: deployedAt, Status: "", Message: "", Source: src})
 	}
 
+	conds := make([]AppCondition, 0, len(resp.Status.Conditions))
+	for _, cnd := range resp.Status.Conditions {
+		conds = append(conds, AppCondition{Type: cnd.Type, Message: cnd.Message})
+	}
+
 	return Application{
 		Name:           resp.Metadata.Name,
 		Namespace:      resp.Spec.Destination.Namespace,
@@ -300,6 +305,7 @@ func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard b
 		Resources:      resources,
 		OperationState: op,
 		History:        history,
+		Conditions:     conds,
 	}, nil
 }
 
@@ -732,9 +738,26 @@ func (c *HTTPClient) ChartDetails(ctx context.Context, appName, revision string)
 }
 
 func (c *HTTPClient) GetSyncWindows(ctx context.Context, appName string) ([]SyncWindow, error) {
-	_ = ctx
-	_ = appName
-	return nil, fmt.Errorf("sync windows not implemented")
+	if err := c.ensureLogin(ctx); err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Items []struct {
+			Kind         string   `json:"kind"`
+			Schedule     string   `json:"schedule"`
+			Duration     string   `json:"duration"`
+			Applications []string `json:"applications"`
+			Namespaces   []string `json:"namespaces"`
+		} `json:"items"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(appName)+"/syncwindows", nil, &resp); err != nil {
+		return nil, err
+	}
+	out := make([]SyncWindow, 0, len(resp.Items))
+	for _, it := range resp.Items {
+		out = append(out, SyncWindow{Kind: it.Kind, Schedule: it.Schedule, Duration: it.Duration, Applications: it.Applications, Namespaces: it.Namespaces})
+	}
+	return out, nil
 }
 
 func (c *HTTPClient) doJSON(ctx context.Context, method, path string, in any, out any) error {

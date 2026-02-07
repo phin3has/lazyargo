@@ -35,6 +35,7 @@ func NewMockClient() *MockClient {
 				{Revision: "deadbeef", DeployedAt: "2026-01-28T09:15:00Z", Status: "Succeeded", Message: "fix values", Source: "bob"},
 				{Revision: "f00dbabe", DeployedAt: "2026-02-01T12:34:56Z", Status: "Succeeded", Message: "bump image tag", Source: "alice"},
 			},
+			Conditions: []AppCondition{{Type: "Warning", Message: "demo warning condition"}},
 		},
 		{
 			Name:           "orders-worker",

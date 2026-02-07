@@ -112,6 +112,9 @@ type Model struct {
 	historyView     *historyModel
 	revisionView    *revisionDetailsModel
 
+	syncWindows    map[string][]argocd.SyncWindow
+	syncWindowsErr map[string]error
+
 	detail     *argocd.Application
 	detailErr  error
 	statusLine string
@@ -259,6 +262,8 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 		editNSInput:         edNS,
 		sortMode:            sortByName,
 		serverLabel:         serverLabel,
+		syncWindows:         map[string][]argocd.SyncWindow{},
+		syncWindowsErr:      map[string]error{},
 	}
 	return m
 }
@@ -276,6 +281,12 @@ type appsMsg struct {
 type detailMsg struct {
 	app argocd.Application
 	err error
+}
+
+type syncWindowsMsg struct {
+	appName string
+	items   []argocd.SyncWindow
+	err     error
 }
 
 type syncResult struct {
@@ -345,6 +356,13 @@ func (m Model) loadDetailCmd(name string, hard bool) tea.Cmd {
 	return func() tea.Msg {
 		app, err := m.client.RefreshApplication(context.Background(), name, hard)
 		return detailMsg{app: app, err: err}
+	}
+}
+
+func (m Model) loadSyncWindowsCmd(name string) tea.Cmd {
+	return func() tea.Msg {
+		items, err := m.client.GetSyncWindows(context.Background(), name)
+		return syncWindowsMsg{appName: name, items: items, err: err}
 	}
 }
 
@@ -487,9 +505,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.resourceSel >= n {
 				m.resourceSel = max(0, n-1)
 			}
+			// Load sync windows info.
+			return m, m.loadSyncWindowsCmd(msg.app.Name)
 		} else {
 			m.detail = nil
 			m.statusLine = "failed to load details"
+		}
+		return m, nil
+	case syncWindowsMsg:
+		if msg.err != nil {
+			m.syncWindowsErr[msg.appName] = msg.err
+		} else {
+			m.syncWindows[msg.appName] = msg.items
+			delete(m.syncWindowsErr, msg.appName)
 		}
 		return m, nil
 	case syncBatchMsg:
@@ -1446,8 +1474,11 @@ func (m Model) renderMain(w, h int) string {
 		detailBlock = "\n\nError loading details:\n\n" + m.detailErr.Error() + "\n\nPress 'r' to retry."
 	}
 
+	conds := renderConditions(app.Conditions, m.styles)
+	wins := renderSyncWindows(m.syncWindows[app.Name], m.syncWindowsErr[app.Name], m.styles)
+
 	content = fmt.Sprintf(
-		"Name:      %s\nNamespace: %s\nProject:   %s\nHealth:    %s\nSync:      %s\nRepo:      %s\nPath:      %s\nRevision:  %s\nCluster:   %s\n\nResources:\n%s\n\n%s%s",
+		"Name:      %s\nNamespace: %s\nProject:   %s\nHealth:    %s\nSync:      %s\nRepo:      %s\nPath:      %s\nRevision:  %s\nCluster:   %s\n\nConditions:\n%s\n\nSync windows:\n%s\n\nResources:\n%s\n\n%s%s",
 		app.Name,
 		app.Namespace,
 		app.Project,
@@ -1457,6 +1488,8 @@ func (m Model) renderMain(w, h int) string {
 		blankIfEmpty(app.Path, "—"),
 		blankIfEmpty(app.Revision, "—"),
 		blankIfEmpty(app.Cluster, "—"),
+		conds,
+		wins,
 		m.renderResourceTree(app),
 		m.statusLine,
 		detailBlock,
@@ -2209,6 +2242,44 @@ func (m Model) selectedResource() (argocd.Resource, bool) {
 		return argocd.Resource{}, false
 	}
 	return m.detail.Resources[n.resourceIdx], true
+}
+
+func renderConditions(cs []argocd.AppCondition, st styles) string {
+	if len(cs) == 0 {
+		return "  (none)"
+	}
+	lines := make([]string, 0, len(cs))
+	for _, c := range cs {
+		typ := blankIfEmpty(strings.TrimSpace(c.Type), "Condition")
+		msg := blankIfEmpty(strings.TrimSpace(c.Message), "—")
+		line := fmt.Sprintf("  - %s: %s", typ, msg)
+		if strings.Contains(strings.ToLower(typ), "warn") {
+			lines = append(lines, st.StatusWarn.Render(line))
+		} else {
+			lines = append(lines, st.StatusValue.Render(line))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func renderSyncWindows(ws []argocd.SyncWindow, err error, st styles) string {
+	if err != nil {
+		return st.Error.Render("  error: " + err.Error())
+	}
+	if len(ws) == 0 {
+		return "  (none)"
+	}
+	lines := make([]string, 0, len(ws))
+	for _, w := range ws {
+		kind := strings.ToLower(strings.TrimSpace(w.Kind))
+		line := fmt.Sprintf("  - %s  %s  %s", blankIfEmpty(kind, "—"), blankIfEmpty(w.Schedule, "—"), blankIfEmpty(w.Duration, "—"))
+		if kind == "deny" {
+			lines = append(lines, st.StatusWarn.Render(line))
+		} else {
+			lines = append(lines, st.StatusValue.Render(line))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func min(a, b int) int {
