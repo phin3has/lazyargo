@@ -30,6 +30,11 @@ func NewMockClient() *MockClient {
 				{Group: "", Kind: "ConfigMap", Version: "v1", Name: "payments-config", Namespace: "payments", Status: "Synced", Health: "Healthy"},
 				{Group: "autoscaling", Kind: "HorizontalPodAutoscaler", Version: "v2", Name: "payments-api", Namespace: "payments", Status: "Synced", Health: "Healthy"},
 			},
+			History: []SyncHistoryEntry{
+				{Revision: "c0ffee", DeployedAt: "2026-01-20T18:00:00Z", Status: "Succeeded", Message: "initial deploy", Source: "ci"},
+				{Revision: "deadbeef", DeployedAt: "2026-01-28T09:15:00Z", Status: "Succeeded", Message: "fix values", Source: "bob"},
+				{Revision: "f00dbabe", DeployedAt: "2026-02-01T12:34:56Z", Status: "Succeeded", Message: "bump image tag", Source: "alice"},
+			},
 		},
 		{
 			Name:           "orders-worker",

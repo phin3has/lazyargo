@@ -268,6 +268,21 @@ func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard b
 		op = &OperationState{Phase: resp.Status.OperationState.Phase, Message: resp.Status.OperationState.Message}
 	}
 
+	history := make([]SyncHistoryEntry, 0, len(resp.Status.History))
+	for _, h := range resp.Status.History {
+		deployedAt := h.DeployedAt
+		if deployedAt == "" {
+			deployedAt = h.DeployStartedAt
+		}
+		src := ""
+		if h.Source != nil {
+			if b, err := json.Marshal(h.Source); err == nil {
+				src = string(b)
+			}
+		}
+		history = append(history, SyncHistoryEntry{Revision: h.Revision, DeployedAt: deployedAt, Status: "", Message: "", Source: src})
+	}
+
 	return Application{
 		Name:           resp.Metadata.Name,
 		Namespace:      resp.Spec.Destination.Namespace,
@@ -280,6 +295,7 @@ func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard b
 		Cluster:        resp.Spec.Destination.Server,
 		Resources:      resources,
 		OperationState: op,
+		History:        history,
 	}, nil
 }
 

@@ -9,6 +9,7 @@ type keyMap struct {
 	RefreshDetail key.Binding
 	RefreshHard   key.Binding
 	Diff          key.Binding
+	History       key.Binding
 	ToggleDrift   key.Binding
 	SyncBatch     key.Binding
 	SyncApp       key.Binding
@@ -25,14 +26,14 @@ type keyMap struct {
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Refresh, k.RefreshDetail, k.RefreshHard, k.Diff, k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Rollback, k.TerminateOp, k.DeleteApp, k.CreateApp, k.EditApp, k.Filter, k.Sort, k.Help, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.Refresh, k.RefreshDetail, k.RefreshHard, k.Diff, k.History, k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Rollback, k.TerminateOp, k.DeleteApp, k.CreateApp, k.EditApp, k.Filter, k.Sort, k.Help, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down},
-		{k.Refresh, k.RefreshDetail, k.RefreshHard, k.Diff},
-		{k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Rollback, k.TerminateOp, k.DeleteApp, k.CreateApp, k.EditApp, k.Filter, k.Sort, k.Clear, k.Diff},
+		{k.Refresh, k.RefreshDetail, k.RefreshHard, k.Diff, k.History},
+		{k.ToggleDrift, k.SyncBatch, k.SyncApp, k.Rollback, k.TerminateOp, k.DeleteApp, k.CreateApp, k.EditApp, k.Filter, k.Sort, k.Clear, k.Diff, k.History},
 		{k.Help, k.Quit},
 	}
 }
@@ -58,6 +59,10 @@ func newKeyMap() keyMap {
 		Diff: key.NewBinding(
 			key.WithKeys("d"),
 			key.WithHelp("d", "diff"),
+		),
+		History: key.NewBinding(
+			key.WithKeys("h"),
+			key.WithHelp("h", "history"),
 		),
 		RefreshHard: key.NewBinding(
 			key.WithKeys("R"),

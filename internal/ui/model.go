@@ -104,6 +104,7 @@ type Model struct {
 	eventsView      *eventsModel
 	logsView        *logsModel
 	diffView        *diffModel
+	historyView     *historyModel
 
 	detail     *argocd.Application
 	detailErr  error
@@ -433,6 +434,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			dv.setSize(msg.Width-2, msg.Height-2)
 			m.diffView = &dv
 		}
+		if m.historyView != nil {
+			hv := *m.historyView
+			hv.setSize(msg.Width-2, msg.Height-2)
+			m.historyView = &hv
+		}
 		return m, nil
 	case appsMsg:
 		m.err = msg.err
@@ -626,6 +632,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.diffView = &dv
 			return m, cmd
 		}
+		if m.historyView != nil {
+			switch msg.String() {
+			case "esc", "q":
+				m.historyView = nil
+				m.statusLine = "closed history"
+				return m, nil
+			case "enter":
+				// MET-61 will add revision detail. For now just acknowledge.
+				m.statusLine = "revision details not implemented yet"
+			}
+			var cmd tea.Cmd
+			hv := *m.historyView
+			hv, cmd = hv.Update(msg)
+			m.historyView = &hv
+			return m, cmd
+		}
 
 		if m.deleteModal {
 			switch msg.String() {
@@ -814,6 +836,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logsView = &lv
 			m.statusLine = "loading logs…"
 			return m, lv.initCmd()
+		case key.Matches(msg, m.keys.History):
+			if len(m.apps) == 0 {
+				return m, nil
+			}
+			// Prefer loaded details.
+			app := m.apps[m.selected]
+			if m.detail != nil && m.detail.Name == app.Name {
+				app = *m.detail
+			}
+			hv := newHistoryModel(m.styles, app)
+			hv.setSize(m.width-4, m.height-4)
+			m.historyView = &hv
+			m.statusLine = "history"
+			return m, nil
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Diff):
@@ -1189,6 +1225,9 @@ func (m Model) renderMain(w, h int) string {
 	}
 	if m.diffView != nil {
 		return m.styles.Main.Width(w).Height(h).Render(m.diffView.View())
+	}
+	if m.historyView != nil {
+		return m.styles.Main.Width(w).Height(h).Render(m.historyView.View())
 	}
 	if m.editModal {
 		return m.styles.Main.Width(w).Height(h).Render(m.renderEditWizard())
