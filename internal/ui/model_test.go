@@ -60,10 +60,11 @@ func TestModel_applyFilter_driftAndQuery(t *testing.T) {
 			wantNames: []string{"b", "c"},
 		},
 		{
-			name:      "query filter matches substring case-insensitive",
-			appsAll:   []argocd.Application{{Name: "frontend", Sync: "Synced"}, {Name: "backend", Sync: "OutOfSync"}},
-			query:     "END",
-			wantNames: []string{"frontend", "backend"},
+			name:    "query filter matches substring case-insensitive",
+			appsAll: []argocd.Application{{Name: "frontend", Sync: "Synced"}, {Name: "backend", Sync: "OutOfSync"}},
+			query:   "END",
+			// Default sort is by name.
+			wantNames: []string{"backend", "frontend"},
 		},
 		{
 			name:      "query + drift only",

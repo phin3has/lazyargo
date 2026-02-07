@@ -10,20 +10,21 @@ type keyMap struct {
 	ToggleDrift   key.Binding
 	SyncBatch     key.Binding
 	Filter        key.Binding
+	Sort          key.Binding
 	Clear         key.Binding
 	Help          key.Binding
 	Quit          key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Refresh, k.RefreshDetail, k.ToggleDrift, k.SyncBatch, k.Filter, k.Help, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.Refresh, k.RefreshDetail, k.ToggleDrift, k.SyncBatch, k.Filter, k.Sort, k.Help, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down},
 		{k.Refresh, k.RefreshDetail},
-		{k.ToggleDrift, k.SyncBatch, k.Filter, k.Clear},
+		{k.ToggleDrift, k.SyncBatch, k.Filter, k.Sort, k.Clear},
 		{k.Help, k.Quit},
 	}
 }
@@ -57,6 +58,10 @@ func newKeyMap() keyMap {
 		Filter: key.NewBinding(
 			key.WithKeys("/"),
 			key.WithHelp("/", "filter"),
+		),
+		Sort: key.NewBinding(
+			key.WithKeys("S"),
+			key.WithHelp("S", "sort"),
 		),
 		Clear: key.NewBinding(
 			key.WithKeys("esc"),

@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -35,6 +36,8 @@ type Model struct {
 	filterActive bool
 	driftOnly    bool
 
+	sortMode sortMode
+
 	syncModal          bool
 	syncTargets        []string
 	syncDryRunComplete bool
@@ -44,6 +47,25 @@ type Model struct {
 	detailErr  error
 	statusLine string
 	err        error
+}
+
+type sortMode int
+
+const (
+	sortByName sortMode = iota
+	sortByHealth
+	sortBySync
+)
+
+func (s sortMode) String() string {
+	switch s {
+	case sortByHealth:
+		return "health"
+	case sortBySync:
+		return "sync"
+	default:
+		return "name"
+	}
 }
 
 func NewModel(cfg config.Config, client argocd.Client) Model {
@@ -63,6 +85,7 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 		keys:        newKeyMap(),
 		help:        h,
 		filterInput: ti,
+		sortMode:    sortByName,
 	}
 	return m
 }
@@ -253,6 +276,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.filterActive = true
 			m.filterInput.Focus()
 			return m, nil
+		case key.Matches(msg, m.keys.Sort):
+			m.sortMode = (m.sortMode + 1) % 3
+			m.applyFilter(true)
+			m.ensureSidebarSelectionVisible()
+			m.statusLine = "sorted by " + m.sortMode.String()
+			return m, nil
 		case key.Matches(msg, m.keys.Up):
 			if m.selected > 0 {
 				m.selected--
@@ -294,6 +323,7 @@ func (m Model) View() string {
 	if m.driftOnly {
 		headerTitle += "  [drift]"
 	}
+	headerTitle += "  [sort:" + m.sortMode.String() + "]"
 	if m.filterInput.Value() != "" || m.filterActive {
 		headerTitle = headerTitle + "  " + m.filterInput.View()
 	}
@@ -460,6 +490,7 @@ func (m *Model) applyFilter(keepSelectionByName bool) {
 		filtered = append(filtered, a)
 	}
 	m.apps = filtered
+	m.sortApps()
 
 	if len(m.apps) == 0 {
 		m.selected = 0
@@ -481,6 +512,67 @@ func (m *Model) applyFilter(keepSelectionByName bool) {
 	if m.selected >= len(m.apps) {
 		m.selected = max(0, len(m.apps)-1)
 	}
+}
+
+func (m *Model) sortApps() {
+	if len(m.apps) < 2 {
+		return
+	}
+
+	healthRank := func(s string) int {
+		s = strings.TrimSpace(strings.ToLower(s))
+		switch s {
+		case "degraded":
+			return 0
+		case "missing":
+			return 1
+		case "suspended":
+			return 2
+		case "progressing":
+			return 3
+		case "healthy":
+			return 4
+		case "":
+			return 98
+		default:
+			return 50
+		}
+	}
+
+	syncRank := func(s string) int {
+		s = strings.TrimSpace(strings.ToLower(s))
+		switch s {
+		case "outofsync", "out-of-sync", "out_of_sync":
+			return 0
+		case "unknown":
+			return 1
+		case "synced":
+			return 2
+		case "":
+			return 98
+		default:
+			return 50
+		}
+	}
+
+	sort.SliceStable(m.apps, func(i, j int) bool {
+		a, b := m.apps[i], m.apps[j]
+		switch m.sortMode {
+		case sortByHealth:
+			ri, rj := healthRank(a.Health), healthRank(b.Health)
+			if ri != rj {
+				return ri < rj
+			}
+		case sortBySync:
+			ri, rj := syncRank(a.Sync), syncRank(b.Sync)
+			if ri != rj {
+				return ri < rj
+			}
+		default:
+			// sortByName
+		}
+		return strings.ToLower(a.Name) < strings.ToLower(b.Name)
+	})
 }
 
 func (m *Model) ensureSidebarSelectionVisible() {
