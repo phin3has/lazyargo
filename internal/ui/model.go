@@ -33,6 +33,7 @@ type Model struct {
 
 	filterInput  textinput.Model
 	filterActive bool
+	driftOnly    bool
 
 	detail     *argocd.Application
 	detailErr  error
@@ -161,6 +162,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detail = nil
 			m.detailErr = nil
 			return m, m.loadDetailCmd(m.apps[m.selected].Name)
+		case key.Matches(msg, m.keys.ToggleDrift):
+			m.driftOnly = !m.driftOnly
+			m.applyFilter(true)
+			m.ensureSidebarSelectionVisible()
+			if m.driftOnly {
+				m.statusLine = "showing drift only"
+			} else {
+				m.statusLine = "showing all apps"
+			}
+			return m, nil
 		case key.Matches(msg, m.keys.Filter):
 			m.filterActive = true
 			m.filterInput.Focus()
@@ -203,6 +214,9 @@ func (m Model) View() string {
 	}
 
 	headerTitle := "lazyArgo"
+	if m.driftOnly {
+		headerTitle += "  [drift]"
+	}
 	if m.filterInput.Value() != "" || m.filterActive {
 		headerTitle = headerTitle + "  " + m.filterInput.View()
 	}
@@ -259,6 +273,9 @@ func (m Model) renderSidebar(w, h int) string {
 	for i := start; i < end; i++ {
 		a := m.apps[i]
 		name := a.Name
+		if a.Sync != "" && a.Sync != "Synced" {
+			name = "! " + name
+		}
 		if i == m.selected {
 			lines = append(lines, m.styles.SidebarSelected.Render("▶ "+name))
 		} else {
@@ -332,17 +349,17 @@ func (m *Model) applyFilter(keepSelectionByName bool) {
 	}
 
 	q := strings.ToLower(strings.TrimSpace(m.filterInput.Value()))
-	if q == "" {
-		m.apps = m.appsAll
-	} else {
-		filtered := make([]argocd.Application, 0, len(m.appsAll))
-		for _, a := range m.appsAll {
-			if strings.Contains(strings.ToLower(a.Name), q) {
-				filtered = append(filtered, a)
-			}
+	filtered := make([]argocd.Application, 0, len(m.appsAll))
+	for _, a := range m.appsAll {
+		if q != "" && !strings.Contains(strings.ToLower(a.Name), q) {
+			continue
 		}
-		m.apps = filtered
+		if m.driftOnly && a.Sync == "Synced" {
+			continue
+		}
+		filtered = append(filtered, a)
 	}
+	m.apps = filtered
 
 	if len(m.apps) == 0 {
 		m.selected = 0
