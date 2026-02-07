@@ -40,6 +40,11 @@ type SyncWindow struct {
 	Namespaces   []string
 }
 
+type AppCondition struct {
+	Type    string
+	Message string
+}
+
 type RevisionMeta struct {
 	Author  string
 	Date    string

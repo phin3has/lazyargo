@@ -97,8 +97,8 @@ type Model struct {
 	terminateErr     error
 	terminateConfirm bool
 
-	focusResources bool
-	resourceSel    int // index into visible resource tree
+	focusResources    bool
+	resourceSel       int // index into visible resource tree
 	resourceCollapsed map[string]bool
 	resourceZoom      string
 
@@ -238,27 +238,27 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 	}
 
 	m := Model{
-		cfg:             cfg,
-		client:          client,
-		styles:          newStyles(),
-		keys:            newKeyMap(),
-		help:            h,
-		filterInput:     ti,
+		cfg:                 cfg,
+		client:              client,
+		styles:              newStyles(),
+		keys:                newKeyMap(),
+		help:                h,
+		filterInput:         ti,
 		resourceSearchInput: rti,
 		resourceCollapsed:   map[string]bool{},
-		deleteInput:     del,
-		createNameInput: nameIn,
-		createPathInput: repoPath,
-		createNSInput:   nsIn,
-		createRevInput:  revIn,
-		createList:      l,
-		editRepoInput:   edRepo,
-		editPathInput:   edPath,
-		editRevInput:    edRev,
-		editClusterIn:   edCluster,
-		editNSInput:     edNS,
-		sortMode:        sortByName,
-		serverLabel:     serverLabel,
+		deleteInput:         del,
+		createNameInput:     nameIn,
+		createPathInput:     repoPath,
+		createNSInput:       nsIn,
+		createRevInput:      revIn,
+		createList:          l,
+		editRepoInput:       edRepo,
+		editPathInput:       edPath,
+		editRevInput:        edRev,
+		editClusterIn:       edCluster,
+		editNSInput:         edNS,
+		sortMode:            sortByName,
+		serverLabel:         serverLabel,
 	}
 	return m
 }
@@ -2210,7 +2210,6 @@ func (m Model) selectedResource() (argocd.Resource, bool) {
 	}
 	return m.detail.Resources[n.resourceIdx], true
 }
-
 
 func min(a, b int) int {
 	if a < b {

@@ -29,6 +29,8 @@ type Application struct {
 
 	// History is populated by Get/Refresh when available.
 	History []SyncHistoryEntry
+
+	Conditions []AppCondition
 }
 
 type OperationState struct {

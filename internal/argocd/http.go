@@ -191,11 +191,15 @@ func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard b
 				Message string `json:"message"`
 			} `json:"operationState"`
 			History []struct {
-				Revision   string `json:"revision"`
-				DeployedAt string `json:"deployedAt"`
+				Revision        string `json:"revision"`
+				DeployedAt      string `json:"deployedAt"`
 				DeployStartedAt string `json:"deployStartedAt"`
-				Source     any    `json:"source"`
+				Source          any    `json:"source"`
 			} `json:"history"`
+			Conditions []struct {
+				Type    string `json:"type"`
+				Message string `json:"message"`
+			} `json:"conditions"`
 			Resources []struct {
 				Group     string `json:"group"`
 				Kind      string `json:"kind"`
@@ -678,7 +682,7 @@ func (c *HTTPClient) ServerSideDiff(ctx context.Context, appName string) ([]Diff
 	out := make([]DiffResult, 0, len(items))
 	for _, it := range items {
 		out = append(out, DiffResult{
-			Ref: ResourceRef{Group: it.Resource.Group, Kind: it.Resource.Kind, Name: it.Resource.Name, Namespace: it.Resource.Namespace, Version: it.Resource.Version},
+			Ref:      ResourceRef{Group: it.Resource.Group, Kind: it.Resource.Kind, Name: it.Resource.Name, Namespace: it.Resource.Namespace, Version: it.Resource.Version},
 			Diff:     it.Diff,
 			Modified: it.Modified,
 		})

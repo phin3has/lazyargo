@@ -309,9 +309,9 @@ func (m *MockClient) PodLogs(ctx context.Context, appName, podName, container st
 	_ = follow
 	// Return a reader with a few sample lines. For follow, caller will just read until EOF.
 	lines := []string{
-		time.Now().Add(-3 * time.Second).UTC().Format(time.RFC3339) + " starting...",
-		time.Now().Add(-2 * time.Second).UTC().Format(time.RFC3339) + " listening on :8080",
-		time.Now().Add(-1 * time.Second).UTC().Format(time.RFC3339) + " GET /healthz 200",
+		time.Now().Add(-3*time.Second).UTC().Format(time.RFC3339) + " starting...",
+		time.Now().Add(-2*time.Second).UTC().Format(time.RFC3339) + " listening on :8080",
+		time.Now().Add(-1*time.Second).UTC().Format(time.RFC3339) + " GET /healthz 200",
 	}
 	return io.NopCloser(strings.NewReader(strings.Join(lines, "\n") + "\n")), nil
 }
