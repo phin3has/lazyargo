@@ -156,6 +156,18 @@ func (m *MockClient) TerminateOperation(ctx context.Context, name string) error 
 	return fmt.Errorf("application not found: %s", name)
 }
 
+func (m *MockClient) DeleteApplication(ctx context.Context, name string, cascade bool) error {
+	_ = ctx
+	_ = cascade
+	for i := range m.apps {
+		if m.apps[i].Name == name {
+			m.apps = append(m.apps[:i], m.apps[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("application not found: %s", name)
+}
+
 func (m *MockClient) SyncApplication(ctx context.Context, name string, dryRun bool) error {
 	_ = ctx
 	for i := range m.apps {

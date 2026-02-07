@@ -60,6 +60,7 @@ type Client interface {
 	ListRevisions(ctx context.Context, name string) ([]Revision, error)
 	RollbackApplication(ctx context.Context, name string, revisionID int64) error
 	TerminateOperation(ctx context.Context, name string) error
+	DeleteApplication(ctx context.Context, name string, cascade bool) error
 
 	// SyncApplication triggers an Argo CD sync operation.
 	// When dryRun is true, the server should validate and simulate the operation without mutating state.

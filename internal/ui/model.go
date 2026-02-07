@@ -37,6 +37,11 @@ type Model struct {
 	filterActive bool
 	driftOnly    bool
 
+	deleteModal   bool
+	deleteApp     string
+	deleteCascade bool
+	deleteInput   textinput.Model
+
 	sortMode sortMode
 
 	serverLabel string
@@ -97,6 +102,12 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 	ti.CharLimit = 128
 	ti.Width = 24
 
+	del := textinput.New()
+	del.Placeholder = "type app name to confirm"
+	del.Prompt = "> "
+	del.CharLimit = 256
+	del.Width = 32
+
 	serverLabel := cfg.ArgoCD.Server
 	if _, ok := client.(*argocd.MockClient); ok {
 		serverLabel = "mock"
@@ -109,6 +120,7 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 		keys:        newKeyMap(),
 		help:        h,
 		filterInput: ti,
+		deleteInput: del,
 		sortMode:    sortByName,
 		serverLabel: serverLabel,
 	}
@@ -156,6 +168,11 @@ type terminateMsg struct {
 	err     error
 }
 
+type deleteMsg struct {
+	appName string
+	err     error
+}
+
 func (m Model) refreshCmd() tea.Cmd {
 	return func() tea.Msg {
 		apps, err := m.client.ListApplications(context.Background())
@@ -199,6 +216,13 @@ func (m Model) terminateCmd(appName string) tea.Cmd {
 	return func() tea.Msg {
 		err := m.client.TerminateOperation(context.Background(), appName)
 		return terminateMsg{appName: appName, err: err}
+	}
+}
+
+func (m Model) deleteCmd(appName string, cascade bool) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.DeleteApplication(context.Background(), appName, cascade)
+		return deleteMsg{appName: appName, err: err}
 	}
 }
 
@@ -292,7 +316,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.terminateConfirm = false
 		m.statusLine = "operation terminated"
 		return m, tea.Batch(m.refreshCmd())
+	case deleteMsg:
+		if msg.err != nil {
+			m.statusLine = "delete failed"
+			m.err = msg.err
+			return m, nil
+		}
+		m.deleteModal = false
+		m.deleteApp = ""
+		m.deleteCascade = false
+		m.deleteInput.SetValue("")
+		m.deleteInput.Blur()
+		m.statusLine = "application deleted"
+		return m, tea.Batch(m.refreshCmd())
 	case tea.KeyMsg:
+		if m.deleteModal {
+			switch msg.String() {
+			case "esc":
+				m.deleteModal = false
+				m.deleteApp = ""
+				m.deleteCascade = false
+				m.deleteInput.SetValue("")
+				m.deleteInput.Blur()
+				m.statusLine = "delete cancelled"
+				return m, nil
+			case "c":
+				m.deleteCascade = !m.deleteCascade
+				return m, nil
+			case "enter":
+				if strings.TrimSpace(m.deleteInput.Value()) != m.deleteApp {
+					m.statusLine = "type the exact app name to confirm"
+					return m, nil
+				}
+				m.statusLine = "deleting…"
+				return m, m.deleteCmd(m.deleteApp, m.deleteCascade)
+			}
+
+			var cmd tea.Cmd
+			m.deleteInput, cmd = m.deleteInput.Update(msg)
+			return m, cmd
+		}
+
 		if m.syncModal {
 			switch msg.String() {
 			case "esc", "n":
@@ -500,6 +564,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.terminateConfirm = false
 			m.statusLine = "terminate operation?"
 			return m, nil
+		case key.Matches(msg, m.keys.DeleteApp):
+			if len(m.apps) == 0 {
+				return m, nil
+			}
+			m.deleteModal = true
+			m.deleteApp = m.apps[m.selected].Name
+			m.deleteCascade = false
+			m.deleteInput.SetValue("")
+			m.deleteInput.Focus()
+			m.statusLine = "confirm delete"
+			return m, nil
 		case key.Matches(msg, m.keys.Filter):
 			m.filterActive = true
 			m.filterInput.Focus()
@@ -679,6 +754,15 @@ func (m Model) renderMain(w, h int) string {
 			"  • Ensure ARGOCD_AUTH_TOKEN is set\n" +
 			"  • If using https://localhost:8080 and you see TLS errors, use --insecure or ARGOCD_INSECURE=true\n\n" +
 			"Press 'r' to retry."
+		return m.styles.Main.Width(w).Height(h).Render(content)
+	}
+	if m.deleteModal {
+		lines := []string{fmt.Sprintf("Delete application: %s", m.deleteApp), ""}
+		lines = append(lines, "This is destructive.")
+		lines = append(lines, fmt.Sprintf("Cascade delete: %v (press 'c' to toggle)", m.deleteCascade))
+		lines = append(lines, "", "Type the application name to confirm:", m.deleteInput.View(), "")
+		lines = append(lines, "Enter=delete  Esc=cancel")
+		content = strings.Join(lines, "\n")
 		return m.styles.Main.Width(w).Height(h).Render(content)
 	}
 	if m.terminateModal {

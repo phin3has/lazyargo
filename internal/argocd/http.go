@@ -333,6 +333,17 @@ func (c *HTTPClient) TerminateOperation(ctx context.Context, name string) error 
 	return c.doJSON(ctx, http.MethodDelete, "/api/v1/applications/"+url.PathEscape(name)+"/operation", nil, nil)
 }
 
+func (c *HTTPClient) DeleteApplication(ctx context.Context, name string, cascade bool) error {
+	if err := c.ensureLogin(ctx); err != nil {
+		return err
+	}
+	path := "/api/v1/applications/" + url.PathEscape(name)
+	if cascade {
+		path += "?cascade=true"
+	}
+	return c.doJSON(ctx, http.MethodDelete, path, nil, nil)
+}
+
 func (c *HTTPClient) SyncApplication(ctx context.Context, name string, dryRun bool) error {
 	if err := c.ensureLogin(ctx); err != nil {
 		return err
