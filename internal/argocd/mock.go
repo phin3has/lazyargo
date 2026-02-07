@@ -117,6 +117,33 @@ func (m *MockClient) RefreshApplication(ctx context.Context, name string, hard b
 	return Application{}, fmt.Errorf("application not found: %s", name)
 }
 
+func (m *MockClient) ListRevisions(ctx context.Context, name string) ([]Revision, error) {
+	_ = ctx
+	// Use a stable sample history for the demo.
+	for _, a := range m.apps {
+		if a.Name == name {
+			return []Revision{
+				{ID: 3, Revision: "f00dbabe", Author: "alice", Date: "2026-02-01T12:34:56Z", Message: "bump image tag"},
+				{ID: 2, Revision: "deadbeef", Author: "bob", Date: "2026-01-28T09:15:00Z", Message: "fix values"},
+				{ID: 1, Revision: "c0ffee", Author: "ci", Date: "2026-01-20T18:00:00Z", Message: "initial deploy"},
+			}, nil
+		}
+	}
+	return nil, fmt.Errorf("application not found: %s", name)
+}
+
+func (m *MockClient) RollbackApplication(ctx context.Context, name string, revisionID int64) error {
+	_ = ctx
+	for i := range m.apps {
+		if m.apps[i].Name == name {
+			m.apps[i].Sync = "OutOfSync"
+			_ = revisionID
+			return nil
+		}
+	}
+	return fmt.Errorf("application not found: %s", name)
+}
+
 func (m *MockClient) SyncApplication(ctx context.Context, name string, dryRun bool) error {
 	_ = ctx
 	for i := range m.apps {

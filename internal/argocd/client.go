@@ -21,6 +21,14 @@ type Application struct {
 	Resources []Resource
 }
 
+type Revision struct {
+	ID       int64
+	Revision string
+	Author   string
+	Date     string
+	Message  string
+}
+
 type Resource struct {
 	Group     string
 	Kind      string
@@ -41,6 +49,9 @@ type Client interface {
 	// RefreshApplication fetches an application, optionally forcing a cache bypass.
 	// When hard is true, the server should refresh from source/cluster.
 	RefreshApplication(ctx context.Context, name string, hard bool) (Application, error)
+
+	ListRevisions(ctx context.Context, name string) ([]Revision, error)
+	RollbackApplication(ctx context.Context, name string, revisionID int64) error
 
 	// SyncApplication triggers an Argo CD sync operation.
 	// When dryRun is true, the server should validate and simulate the operation without mutating state.

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -260,6 +261,59 @@ func (c *HTTPClient) RefreshApplication(ctx context.Context, name string, hard b
 		Cluster:   resp.Spec.Destination.Server,
 		Resources: resources,
 	}, nil
+}
+
+func (c *HTTPClient) ListRevisions(ctx context.Context, name string) ([]Revision, error) {
+	if err := c.ensureLogin(ctx); err != nil {
+		return nil, err
+	}
+
+	// First fetch application history IDs and their git revisions.
+	var app struct {
+		Status struct {
+			History []struct {
+				ID       int64  `json:"id"`
+				Revision string `json:"revision"`
+			} `json:"history"`
+		} `json:"status"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(name), nil, &app); err != nil {
+		return nil, err
+	}
+
+	revs := make([]Revision, 0, len(app.Status.History))
+	for _, h := range app.Status.History {
+		r := Revision{ID: h.ID, Revision: h.Revision}
+		if h.Revision != "" {
+			var meta struct {
+				Author  string `json:"author"`
+				Date    string `json:"date"`
+				Message string `json:"message"`
+			}
+			_ = c.doJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(name)+"/revisions/"+url.PathEscape(h.Revision)+"/metadata", nil, &meta)
+			r.Author = meta.Author
+			r.Date = meta.Date
+			r.Message = meta.Message
+		}
+		revs = append(revs, r)
+	}
+
+	// Newest first.
+	sort.SliceStable(revs, func(i, j int) bool { return revs[i].ID > revs[j].ID })
+	if len(revs) > 20 {
+		revs = revs[:20]
+	}
+	return revs, nil
+}
+
+func (c *HTTPClient) RollbackApplication(ctx context.Context, name string, revisionID int64) error {
+	if err := c.ensureLogin(ctx); err != nil {
+		return err
+	}
+	payload := struct {
+		ID int64 `json:"id"`
+	}{ID: revisionID}
+	return c.doJSON(ctx, http.MethodPost, "/api/v1/applications/"+url.PathEscape(name)+"/rollback", payload, nil)
 }
 
 func (c *HTTPClient) SyncApplication(ctx context.Context, name string, dryRun bool) error {

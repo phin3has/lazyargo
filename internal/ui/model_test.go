@@ -37,6 +37,19 @@ func (f *fakeClient) RefreshApplication(ctx context.Context, name string, hard b
 	return argocd.Application{Name: name}, nil
 }
 
+func (f *fakeClient) ListRevisions(ctx context.Context, name string) ([]argocd.Revision, error) {
+	_ = ctx
+	_ = name
+	return nil, nil
+}
+
+func (f *fakeClient) RollbackApplication(ctx context.Context, name string, revisionID int64) error {
+	_ = ctx
+	_ = name
+	_ = revisionID
+	return nil
+}
+
 func (f *fakeClient) SyncApplication(ctx context.Context, name string, dryRun bool) error {
 	f.syncCalls = append(f.syncCalls, syncCall{name: name, dryRun: dryRun})
 	if f.syncErr == nil {

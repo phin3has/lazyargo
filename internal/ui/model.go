@@ -48,6 +48,14 @@ type Model struct {
 	syncDryRunComplete bool
 	syncDryRunResults  []syncResult
 
+	rollbackModal    bool
+	rollbackApp      string
+	rollbackLoading  bool
+	rollbackErr      error
+	rollbackRevs     []argocd.Revision
+	rollbackSelected int
+	rollbackConfirm  bool
+
 	detail     *argocd.Application
 	detailErr  error
 	statusLine string
@@ -126,6 +134,17 @@ type syncBatchMsg struct {
 	results []syncResult
 }
 
+type revisionsMsg struct {
+	appName   string
+	revisions []argocd.Revision
+	err       error
+}
+
+type rollbackMsg struct {
+	appName string
+	err     error
+}
+
 func (m Model) refreshCmd() tea.Cmd {
 	return func() tea.Msg {
 		apps, err := m.client.ListApplications(context.Background())
@@ -148,6 +167,20 @@ func (m Model) syncBatchCmd(targets []string, dryRun bool) tea.Cmd {
 			results = append(results, syncResult{name: name, err: err})
 		}
 		return syncBatchMsg{dryRun: dryRun, results: results}
+	}
+}
+
+func (m Model) loadRevisionsCmd(appName string) tea.Cmd {
+	return func() tea.Msg {
+		revs, err := m.client.ListRevisions(context.Background(), appName)
+		return revisionsMsg{appName: appName, revisions: revs, err: err}
+	}
+}
+
+func (m Model) rollbackCmd(appName string, id int64) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.RollbackApplication(context.Background(), appName, id)
+		return rollbackMsg{appName: appName, err: err}
 	}
 }
 
@@ -202,6 +235,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncDryRunResults = nil
 		m.statusLine = "sync finished"
 		return m, m.refreshCmd()
+	case revisionsMsg:
+		m.rollbackLoading = false
+		m.rollbackErr = msg.err
+		if msg.err == nil {
+			m.rollbackRevs = msg.revisions
+			m.rollbackSelected = 0
+			m.rollbackConfirm = false
+			m.statusLine = fmt.Sprintf("loaded %d revisions", len(msg.revisions))
+		} else {
+			m.rollbackRevs = nil
+			m.statusLine = "failed to load revisions"
+		}
+		return m, nil
+	case rollbackMsg:
+		if msg.err != nil {
+			m.rollbackErr = msg.err
+			m.statusLine = "rollback failed"
+			return m, nil
+		}
+		m.rollbackModal = false
+		m.rollbackApp = ""
+		m.rollbackLoading = false
+		m.rollbackErr = nil
+		m.rollbackRevs = nil
+		m.rollbackConfirm = false
+		m.statusLine = "rollback started"
+		return m, tea.Batch(m.refreshCmd())
 	case tea.KeyMsg:
 		if m.syncModal {
 			switch msg.String() {
@@ -219,6 +279,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.statusLine = "syncing…"
 				return m, m.syncBatchCmd(m.syncTargets, false)
+			}
+			return m, nil
+		}
+
+		if m.rollbackModal {
+			switch msg.String() {
+			case "esc", "n":
+				m.rollbackModal = false
+				m.rollbackApp = ""
+				m.rollbackLoading = false
+				m.rollbackErr = nil
+				m.rollbackRevs = nil
+				m.rollbackConfirm = false
+				m.statusLine = "rollback cancelled"
+				return m, nil
+			case "up", "k":
+				if m.rollbackSelected > 0 {
+					m.rollbackSelected--
+					m.rollbackConfirm = false
+				}
+				return m, nil
+			case "down", "j":
+				if m.rollbackSelected < len(m.rollbackRevs)-1 {
+					m.rollbackSelected++
+					m.rollbackConfirm = false
+				}
+				return m, nil
+			case "enter":
+				if len(m.rollbackRevs) == 0 || m.rollbackLoading {
+					return m, nil
+				}
+				m.rollbackConfirm = true
+				m.statusLine = "confirm rollback with y"
+				return m, nil
+			case "y":
+				if !m.rollbackConfirm || len(m.rollbackRevs) == 0 || m.rollbackLoading {
+					return m, nil
+				}
+				rev := m.rollbackRevs[m.rollbackSelected]
+				m.rollbackLoading = true
+				m.statusLine = fmt.Sprintf("rolling back to %d…", rev.ID)
+				return m, m.rollbackCmd(m.rollbackApp, rev.ID)
 			}
 			return m, nil
 		}
@@ -307,6 +409,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.syncDryRunResults = nil
 			m.statusLine = "running dry-run…"
 			return m, m.syncBatchCmd(targets, true)
+		case key.Matches(msg, m.keys.Rollback):
+			if len(m.apps) == 0 {
+				return m, nil
+			}
+			m.rollbackModal = true
+			m.rollbackApp = m.apps[m.selected].Name
+			m.rollbackLoading = true
+			m.rollbackErr = nil
+			m.rollbackRevs = nil
+			m.rollbackSelected = 0
+			m.rollbackConfirm = false
+			m.statusLine = "loading revisions…"
+			return m, m.loadRevisionsCmd(m.rollbackApp)
 		case key.Matches(msg, m.keys.Filter):
 			m.filterActive = true
 			m.filterInput.Focus()
@@ -486,6 +601,45 @@ func (m Model) renderMain(w, h int) string {
 			"  • Ensure ARGOCD_AUTH_TOKEN is set\n" +
 			"  • If using https://localhost:8080 and you see TLS errors, use --insecure or ARGOCD_INSECURE=true\n\n" +
 			"Press 'r' to retry."
+		return m.styles.Main.Width(w).Height(h).Render(content)
+	}
+	if m.rollbackModal {
+		lines := []string{fmt.Sprintf("Rollback: %s", m.rollbackApp), ""}
+		if m.rollbackLoading {
+			lines = append(lines, "Loading revisions…")
+		}
+		if m.rollbackErr != nil {
+			lines = append(lines, "", "Error:", m.rollbackErr.Error())
+		}
+		if !m.rollbackLoading && len(m.rollbackRevs) == 0 && m.rollbackErr == nil {
+			lines = append(lines, "No revisions found.")
+		}
+		if len(m.rollbackRevs) > 0 {
+			lines = append(lines, "Select a revision:")
+			for i, r := range m.rollbackRevs {
+				prefix := "  "
+				if i == m.rollbackSelected {
+					prefix = "▶ "
+				}
+				sum := r.Revision
+				if r.Message != "" {
+					sum = r.Message
+				}
+				meta := strings.TrimSpace(strings.Join([]string{r.Author, r.Date}, " "))
+				if meta != "" {
+					meta = " (" + meta + ")"
+				}
+				lines = append(lines, fmt.Sprintf("%s#%d %s%s", prefix, r.ID, sum, meta))
+			}
+			lines = append(lines, "")
+			if m.rollbackConfirm {
+				rev := m.rollbackRevs[m.rollbackSelected]
+				lines = append(lines, fmt.Sprintf("Confirm rollback to #%d? y=confirm, n/esc=cancel", rev.ID))
+			} else {
+				lines = append(lines, "Enter=select  y=confirm  n/esc=cancel")
+			}
+		}
+		content = strings.Join(lines, "\n")
 		return m.styles.Main.Width(w).Height(h).Render(content)
 	}
 	if m.syncModal {
