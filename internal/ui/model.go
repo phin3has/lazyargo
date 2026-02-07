@@ -44,6 +44,7 @@ type Model struct {
 
 	syncModal          bool
 	syncTargets        []string
+	syncPreview        map[string][]argocd.Resource // drifted resources snapshot
 	syncDryRunComplete bool
 	syncDryRunResults  []syncResult
 
@@ -196,6 +197,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Real sync finished: clear modal and refresh list.
 		m.syncModal = false
 		m.syncTargets = nil
+		m.syncPreview = nil
 		m.syncDryRunComplete = false
 		m.syncDryRunResults = nil
 		m.statusLine = "sync finished"
@@ -206,6 +208,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc", "n":
 				m.syncModal = false
 				m.syncTargets = nil
+				m.syncPreview = nil
 				m.syncDryRunComplete = false
 				m.syncDryRunResults = nil
 				m.statusLine = "sync cancelled"
@@ -279,6 +282,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.syncModal = true
 			m.syncTargets = targets
+			m.syncPreview = m.buildSyncPreview(targets)
+			m.syncDryRunComplete = false
+			m.syncDryRunResults = nil
+			m.statusLine = "running dry-run…"
+			return m, m.syncBatchCmd(targets, true)
+		case key.Matches(msg, m.keys.SyncApp):
+			if len(m.apps) == 0 {
+				return m, nil
+			}
+			targets := []string{m.apps[m.selected].Name}
+			m.syncModal = true
+			m.syncTargets = targets
+			m.syncPreview = m.buildSyncPreview(targets)
 			m.syncDryRunComplete = false
 			m.syncDryRunResults = nil
 			m.statusLine = "running dry-run…"
@@ -469,6 +485,24 @@ func (m Model) renderMain(w, h int) string {
 		lines = append(lines, fmt.Sprintf("Targets: %d", len(m.syncTargets)))
 		for _, name := range m.syncTargets {
 			lines = append(lines, "  - "+name)
+			if rs := m.syncPreview[name]; len(rs) > 0 {
+				lines = append(lines, "    Resources to reconcile:")
+				for _, r := range rs {
+					kind := r.Kind
+					if r.Group != "" {
+						kind = r.Group + "/" + r.Kind
+					}
+					ns := r.Namespace
+					if ns == "" {
+						ns = "—"
+					}
+					st := r.Status
+					if st == "" {
+						st = "—"
+					}
+					lines = append(lines, fmt.Sprintf("      - %s/%s (%s) [%s]", kind, r.Name, ns, st))
+				}
+			}
 		}
 		lines = append(lines, "")
 		if !m.syncDryRunComplete {
@@ -479,7 +513,12 @@ func (m Model) renderMain(w, h int) string {
 				if r.err != nil {
 					lines = append(lines, fmt.Sprintf("  ✗ %s: %v", r.name, r.err))
 				} else {
-					lines = append(lines, fmt.Sprintf("  ✓ %s", r.name))
+					n := len(m.syncPreview[r.name])
+					suffix := ""
+					if n > 0 {
+						suffix = fmt.Sprintf(" (%d resources)", n)
+					}
+					lines = append(lines, fmt.Sprintf("  ✓ %s%s", r.name, suffix))
 				}
 			}
 			lines = append(lines, "", "Press y to run sync, n/esc to cancel.")
@@ -663,6 +702,37 @@ func blankIfEmpty(s, fallback string) string {
 		return fallback
 	}
 	return s
+}
+
+func (m *Model) buildSyncPreview(targets []string) map[string][]argocd.Resource {
+	preview := make(map[string][]argocd.Resource, len(targets))
+	for _, name := range targets {
+		// Prefer loaded details for the selected app.
+		var rs []argocd.Resource
+		if m.detail != nil && m.detail.Name == name {
+			rs = m.detail.Resources
+		} else {
+			for _, a := range m.appsAll {
+				if a.Name == name {
+					rs = a.Resources
+					break
+				}
+			}
+		}
+		if len(rs) == 0 {
+			continue
+		}
+		out := make([]argocd.Resource, 0)
+		for _, r := range rs {
+			if strings.TrimSpace(r.Status) != "" && r.Status != "Synced" {
+				out = append(out, r)
+			}
+		}
+		if len(out) > 0 {
+			preview[name] = out
+		}
+	}
+	return preview
 }
 
 func renderResources(rs []argocd.Resource) string {
