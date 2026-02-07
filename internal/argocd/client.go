@@ -12,10 +12,10 @@ type Application struct {
 	Sync      string // e.g. Synced, OutOfSync
 
 	// Optional fields (may be empty depending on API permissions / list endpoint)
-	RepoURL   string
-	Revision  string
-	Path      string
-	Cluster   string
+	RepoURL  string
+	Revision string
+	Path     string
+	Cluster  string
 
 	// Resources are usually populated by GetApplication.
 	Resources []Resource
@@ -37,4 +37,8 @@ type Resource struct {
 type Client interface {
 	ListApplications(ctx context.Context) ([]Application, error)
 	GetApplication(ctx context.Context, name string) (Application, error)
+
+	// SyncApplication triggers an Argo CD sync operation.
+	// When dryRun is true, the server should validate and simulate the operation without mutating state.
+	SyncApplication(ctx context.Context, name string, dryRun bool) error
 }
