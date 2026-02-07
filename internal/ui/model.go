@@ -60,6 +60,18 @@ type Model struct {
 	createErr        error
 	createCreating   bool
 
+	editModal      bool
+	editStep       createStep
+	editApp        string
+	editRepoInput  textinput.Model
+	editPathInput  textinput.Model
+	editRevInput   textinput.Model
+	editClusterIn  textinput.Model
+	editNSInput    textinput.Model
+	editSyncPolicy string
+	editErr        error
+	editSaving     bool
+
 	sortMode sortMode
 
 	serverLabel string
@@ -106,6 +118,7 @@ const (
 	createStepProject
 	createStepRepo
 	createStepPath
+	createStepRevision
 	createStepCluster
 	createStepNamespace
 	createStepSyncPolicy
@@ -168,6 +181,36 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 	l.SetFilteringEnabled(true)
 	l.DisableQuitKeybindings()
 
+	edRepo := textinput.New()
+	edRepo.Placeholder = "repo URL"
+	edRepo.Prompt = "repo> "
+	edRepo.CharLimit = 256
+	edRepo.Width = 48
+
+	edPath := textinput.New()
+	edPath.Placeholder = "path/chart"
+	edPath.Prompt = "path> "
+	edPath.CharLimit = 256
+	edPath.Width = 48
+
+	edRev := textinput.New()
+	edRev.Placeholder = "revision"
+	edRev.Prompt = "rev> "
+	edRev.CharLimit = 128
+	edRev.Width = 32
+
+	edCluster := textinput.New()
+	edCluster.Placeholder = "cluster server"
+	edCluster.Prompt = "cluster> "
+	edCluster.CharLimit = 256
+	edCluster.Width = 48
+
+	edNS := textinput.New()
+	edNS.Placeholder = "namespace"
+	edNS.Prompt = "ns> "
+	edNS.CharLimit = 128
+	edNS.Width = 32
+
 	serverLabel := cfg.ArgoCD.Server
 	if _, ok := client.(*argocd.MockClient); ok {
 		serverLabel = "mock"
@@ -186,6 +229,11 @@ func NewModel(cfg config.Config, client argocd.Client) Model {
 		createNSInput:   nsIn,
 		createRevInput:  revIn,
 		createList:      l,
+		editRepoInput:   edRepo,
+		editPathInput:   edPath,
+		editRevInput:    edRev,
+		editClusterIn:   edCluster,
+		editNSInput:     edNS,
 		sortMode:        sortByName,
 		serverLabel:     serverLabel,
 	}
@@ -254,6 +302,11 @@ type clustersMsg struct {
 }
 
 type createMsg struct {
+	appName string
+	err     error
+}
+
+type updateMsg struct {
 	appName string
 	err     error
 }
@@ -336,6 +389,13 @@ func (m Model) createAppCmd(app argocd.Application) tea.Cmd {
 	return func() tea.Msg {
 		err := m.client.CreateApplication(context.Background(), app)
 		return createMsg{appName: app.Name, err: err}
+	}
+}
+
+func (m Model) updateAppCmd(app argocd.Application) tea.Cmd {
+	return func() tea.Msg {
+		err := m.client.UpdateApplication(context.Background(), app)
+		return updateMsg{appName: app.Name, err: err}
 	}
 }
 
@@ -470,6 +530,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = m.resetCreateWizard()
 		m.statusLine = "application created"
 		return m, tea.Batch(m.refreshCmd())
+	case updateMsg:
+		m.editSaving = false
+		if msg.err != nil {
+			m.editErr = msg.err
+			m.statusLine = "update failed"
+			return m, nil
+		}
+		m = m.resetEditWizard()
+		m.statusLine = "application updated"
+		return m, tea.Batch(m.refreshCmd())
 	case tea.KeyMsg:
 		if m.deleteModal {
 			switch msg.String() {
@@ -498,6 +568,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		if m.editModal {
+			return m.updateEditWizard(msg)
+		}
 		if m.createModal {
 			return m.updateCreateWizard(msg)
 		}
@@ -737,6 +810,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.createList.SetItems(nil)
 			m.statusLine = "create app"
 			return m, tea.Batch(m.loadProjectsCmd(), m.loadReposCmd(), m.loadClustersCmd())
+		case key.Matches(msg, m.keys.EditApp):
+			if len(m.apps) == 0 {
+				return m, nil
+			}
+			name := m.apps[m.selected].Name
+			app := m.apps[m.selected]
+			if m.detail != nil && m.detail.Name == name {
+				app = *m.detail
+			}
+			m.editModal = true
+			m.editStep = createStepRepo
+			m.editApp = name
+			m.editErr = nil
+			m.editSaving = false
+			m.editRepoInput.SetValue(app.RepoURL)
+			m.editPathInput.SetValue(app.Path)
+			m.editRevInput.SetValue(blankIfEmpty(app.Revision, "main"))
+			m.editClusterIn.SetValue(app.Cluster)
+			m.editNSInput.SetValue(app.Namespace)
+			if app.SyncPolicy != "" {
+				m.editSyncPolicy = strings.ToLower(app.SyncPolicy)
+			} else {
+				m.editSyncPolicy = "manual"
+			}
+			m.editRepoInput.Focus()
+			m.statusLine = "edit app"
+			return m, nil
 		case key.Matches(msg, m.keys.Filter):
 			m.filterActive = true
 			m.filterInput.Focus()
@@ -917,6 +1017,9 @@ func (m Model) renderMain(w, h int) string {
 			"  • If using https://localhost:8080 and you see TLS errors, use --insecure or ARGOCD_INSECURE=true\n\n" +
 			"Press 'r' to retry."
 		return m.styles.Main.Width(w).Height(h).Render(content)
+	}
+	if m.editModal {
+		return m.styles.Main.Width(w).Height(h).Render(m.renderEditWizard())
 	}
 	if m.createModal {
 		return m.styles.Main.Width(w).Height(h).Render(m.renderCreateWizard())
@@ -1418,6 +1521,186 @@ func (m Model) renderCreateWizard() string {
 			"  sync:      " + m.createSyncPolicy,
 			"",
 			"y=create  n=cancel  ←=back",
+		}
+		return strings.Join(append(head, sum...), "\n")
+	default:
+		return strings.Join(append(head, "Unknown step"), "\n")
+	}
+}
+
+func (m Model) resetEditWizard() Model {
+	m.editModal = false
+	m.editStep = createStepRepo
+	m.editApp = ""
+	m.editErr = nil
+	m.editSaving = false
+	m.editRepoInput.Blur()
+	m.editPathInput.Blur()
+	m.editRevInput.Blur()
+	m.editClusterIn.Blur()
+	m.editNSInput.Blur()
+	m.editSyncPolicy = "manual"
+	return m
+}
+
+func (m Model) updateEditWizard(k tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch k.String() {
+	case "esc":
+		m = m.resetEditWizard()
+		m.statusLine = "edit cancelled"
+		return m, nil
+	case "left":
+		if m.editStep > createStepRepo {
+			m.editStep--
+			m.editErr = nil
+		}
+		return m, nil
+	}
+
+	// Ensure only the active input is focused.
+	focus := func(step createStep) {
+		m.editRepoInput.Blur()
+		m.editPathInput.Blur()
+		m.editRevInput.Blur()
+		m.editClusterIn.Blur()
+		m.editNSInput.Blur()
+		switch step {
+		case createStepRepo:
+			m.editRepoInput.Focus()
+		case createStepPath:
+			m.editPathInput.Focus()
+		case createStepRevision:
+			m.editRevInput.Focus()
+		case createStepCluster:
+			m.editClusterIn.Focus()
+		case createStepNamespace:
+			m.editNSInput.Focus()
+		}
+	}
+
+	switch m.editStep {
+	case createStepRepo:
+		if k.String() == "enter" {
+			m.editStep = createStepPath
+			focus(m.editStep)
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.editRepoInput, cmd = m.editRepoInput.Update(k)
+		return m, cmd
+	case createStepPath:
+		if k.String() == "enter" {
+			m.editStep = createStepRevision
+			focus(m.editStep)
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.editPathInput, cmd = m.editPathInput.Update(k)
+		return m, cmd
+	case createStepRevision:
+		if k.String() == "enter" {
+			m.editStep = createStepCluster
+			focus(m.editStep)
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.editRevInput, cmd = m.editRevInput.Update(k)
+		return m, cmd
+	case createStepCluster:
+		if k.String() == "enter" {
+			m.editStep = createStepNamespace
+			focus(m.editStep)
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.editClusterIn, cmd = m.editClusterIn.Update(k)
+		return m, cmd
+	case createStepNamespace:
+		if k.String() == "enter" {
+			m.editStep = createStepSyncPolicy
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.editNSInput, cmd = m.editNSInput.Update(k)
+		return m, cmd
+	case createStepSyncPolicy:
+		switch k.String() {
+		case "a":
+			m.editSyncPolicy = "auto"
+		case "m":
+			m.editSyncPolicy = "manual"
+		case "enter":
+			m.editStep = createStepConfirm
+		}
+		return m, nil
+	case createStepConfirm:
+		switch k.String() {
+		case "y":
+			if m.editSaving {
+				return m, nil
+			}
+			m.editSaving = true
+			m.statusLine = "saving…"
+			app := argocd.Application{
+				Name:           m.editApp,
+				Project:        "",
+				RepoURL:        strings.TrimSpace(m.editRepoInput.Value()),
+				Path:           strings.TrimSpace(m.editPathInput.Value()),
+				Revision:       strings.TrimSpace(blankIfEmpty(m.editRevInput.Value(), "main")),
+				Cluster:        strings.TrimSpace(m.editClusterIn.Value()),
+				Namespace:      strings.TrimSpace(m.editNSInput.Value()),
+				SyncPolicy:     m.editSyncPolicy,
+				Resources:      nil,
+				OperationState: nil,
+			}
+			return m, m.updateAppCmd(app)
+		case "n":
+			m = m.resetEditWizard()
+			m.statusLine = "edit cancelled"
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
+func (m Model) renderEditWizard() string {
+	head := []string{fmt.Sprintf("Edit application: %s", m.editApp), ""}
+	if m.editErr != nil {
+		head = append(head, "Error: "+m.editErr.Error(), "")
+	}
+	if m.editSaving {
+		head = append(head, "Saving…", "")
+	}
+
+	switch m.editStep {
+	case createStepRepo:
+		return strings.Join(append(head, "Repo URL", m.editRepoInput.View(), "", "Enter=next  ←=back  Esc=cancel"), "\n")
+	case createStepPath:
+		return strings.Join(append(head, "Path", m.editPathInput.View(), "", "Enter=next  ←=back  Esc=cancel"), "\n")
+	case createStepRevision:
+		return strings.Join(append(head, "Revision", m.editRevInput.View(), "", "Enter=next  ←=back  Esc=cancel"), "\n")
+	case createStepCluster:
+		return strings.Join(append(head, "Destination cluster", m.editClusterIn.View(), "", "Enter=next  ←=back  Esc=cancel"), "\n")
+	case createStepNamespace:
+		return strings.Join(append(head, "Namespace", m.editNSInput.View(), "", "Enter=next  ←=back  Esc=cancel"), "\n")
+	case createStepSyncPolicy:
+		return strings.Join(append(head,
+			"Sync policy (press 'a' for auto, 'm' for manual)",
+			"Current: "+m.editSyncPolicy,
+			"",
+			"Enter=next  ←=back  Esc=cancel",
+		), "\n")
+	case createStepConfirm:
+		sum := []string{
+			"Confirm update:",
+			"  repo:      " + strings.TrimSpace(m.editRepoInput.Value()),
+			"  path:      " + strings.TrimSpace(m.editPathInput.Value()),
+			"  rev:       " + strings.TrimSpace(blankIfEmpty(m.editRevInput.Value(), "main")),
+			"  cluster:   " + strings.TrimSpace(m.editClusterIn.Value()),
+			"  namespace: " + strings.TrimSpace(m.editNSInput.Value()),
+			"  sync:      " + m.editSyncPolicy,
+			"",
+			"y=save  n=cancel  ←=back",
 		}
 		return strings.Join(append(head, sum...), "\n")
 	default:

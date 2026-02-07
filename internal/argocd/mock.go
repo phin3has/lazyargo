@@ -200,6 +200,23 @@ func (m *MockClient) ListRepositories(ctx context.Context) ([]string, error) {
 	return []string{"https://github.com/example/platform", "https://github.com/example/ops"}, nil
 }
 
+func (m *MockClient) UpdateApplication(ctx context.Context, app Application) error {
+	_ = ctx
+	for i := range m.apps {
+		if m.apps[i].Name == app.Name {
+			m.apps[i].Project = app.Project
+			m.apps[i].RepoURL = app.RepoURL
+			m.apps[i].Path = app.Path
+			m.apps[i].Revision = app.Revision
+			m.apps[i].Cluster = app.Cluster
+			m.apps[i].Namespace = app.Namespace
+			m.apps[i].SyncPolicy = app.SyncPolicy
+			return nil
+		}
+	}
+	return fmt.Errorf("application not found: %s", app.Name)
+}
+
 func (m *MockClient) SyncApplication(ctx context.Context, name string, dryRun bool) error {
 	_ = ctx
 	for i := range m.apps {

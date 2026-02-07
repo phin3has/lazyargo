@@ -67,6 +67,7 @@ type Client interface {
 	ListProjects(ctx context.Context) ([]string, error)
 	ListClusters(ctx context.Context) ([]string, error)
 	ListRepositories(ctx context.Context) ([]string, error)
+	UpdateApplication(ctx context.Context, app Application) error
 
 	// SyncApplication triggers an Argo CD sync operation.
 	// When dryRun is true, the server should validate and simulate the operation without mutating state.

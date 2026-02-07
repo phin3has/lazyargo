@@ -433,6 +433,38 @@ func (c *HTTPClient) ListRepositories(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
+func (c *HTTPClient) UpdateApplication(ctx context.Context, app Application) error {
+	if err := c.ensureLogin(ctx); err != nil {
+		return err
+	}
+	if strings.TrimSpace(app.Name) == "" {
+		return fmt.Errorf("missing application name")
+	}
+
+	payload := map[string]any{
+		"metadata": map[string]any{
+			"name": app.Name,
+		},
+		"spec": map[string]any{
+			"project": app.Project,
+			"source": map[string]any{
+				"repoURL":        app.RepoURL,
+				"path":           app.Path,
+				"targetRevision": app.Revision,
+			},
+			"destination": map[string]any{
+				"server":    app.Cluster,
+				"namespace": app.Namespace,
+			},
+		},
+	}
+	if strings.EqualFold(app.SyncPolicy, "auto") {
+		payload["spec"].(map[string]any)["syncPolicy"] = map[string]any{"automated": map[string]any{}}
+	}
+
+	return c.doJSON(ctx, http.MethodPut, "/api/v1/applications/"+url.PathEscape(app.Name), payload, nil)
+}
+
 func (c *HTTPClient) DeleteApplication(ctx context.Context, name string, cascade bool) error {
 	if err := c.ensureLogin(ctx); err != nil {
 		return err
