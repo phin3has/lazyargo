@@ -101,7 +101,7 @@ func main() {
 		client = h
 	}
 
-	m := ui.NewModel(cfg, client)
+	m := ui.NewRootModel(cfg, client)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
