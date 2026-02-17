@@ -15,9 +15,6 @@ import (
 type PlaceholderView struct {
 	id    ViewID
 	title string
-
-	width  int
-	height int
 }
 
 func NewPlaceholderView(id ViewID, title string) PlaceholderView {
@@ -41,5 +38,5 @@ func (v PlaceholderView) View() string {
 }
 
 func (v PlaceholderView) SetSize(width, height int) {
-	v.width, v.height = width, height
+	// No-op for placeholder views.
 }

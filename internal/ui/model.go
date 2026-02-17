@@ -1717,9 +1717,7 @@ func (m Model) updateCreateWizard(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if m.createErr != nil && k.String() != "enter" {
-		// Allow navigating even with an error.
-	}
+	// Intentionally allow navigation even with an error (handled in per-step key logic below).
 
 	switch m.createStep {
 	case createStepName:
