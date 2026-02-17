@@ -8,13 +8,14 @@ import (
 )
 
 // ViewID is a stable identifier for a top-level view (tab).
-//
-// This is intentionally simple for now; MET-65 can expand this into
-// user-facing tabs, a command palette, and additional views.
 type ViewID string
 
 const (
 	ViewApplication ViewID = "application"
+	ViewProjects    ViewID = "projects"
+	ViewRepos       ViewID = "repos"
+	ViewClusters    ViewID = "clusters"
+	ViewSettings    ViewID = "settings"
 )
 
 // View is a lightweight interface for top-level UI screens.
@@ -31,51 +32,123 @@ type View interface {
 
 // RootModel is the top-level Bubble Tea model.
 //
-// For MET-64 it routes all messages to the existing Application view.
-// Future work (MET-65+) can add a visible tab bar, view switching, and a
-// command palette without disturbing per-view logic.
+// MET-64 introduced the initial view router scaffold.
+// MET-65 expands it into a minimal navigation framework with a command palette
+// and placeholder views (without disturbing the existing Application view).
 type RootModel struct {
 	width  int
 	height int
 
-	active View
+	views  map[ViewID]View
+	order  []ViewID
+	active ViewID
+
+	palette     CommandPalette
+	paletteOpen bool
 }
 
 func NewRootModel(cfg config.Config, client argocd.Client) RootModel {
 	app := NewApplicationView(NewModel(cfg, client))
-	return RootModel{active: app}
+
+	views := map[ViewID]View{
+		ViewApplication: app,
+		ViewProjects:    NewPlaceholderView(ViewProjects, "Projects"),
+		ViewRepos:       NewPlaceholderView(ViewRepos, "Repositories"),
+		ViewClusters:    NewPlaceholderView(ViewClusters, "Clusters"),
+		ViewSettings:    NewPlaceholderView(ViewSettings, "Settings"),
+	}
+
+	order := []ViewID{ViewApplication, ViewProjects, ViewRepos, ViewClusters, ViewSettings}
+
+	items := []CommandItem{
+		{Title: "Application", ID: ViewApplication},
+		{Title: "Projects", ID: ViewProjects},
+		{Title: "Repositories", ID: ViewRepos},
+		{Title: "Clusters", ID: ViewClusters},
+		{Title: "Settings", ID: ViewSettings},
+	}
+
+	return RootModel{
+		views:   views,
+		order:   order,
+		active:  ViewApplication,
+		palette: NewCommandPalette(items),
+	}
 }
 
 func (m RootModel) Init() tea.Cmd {
-	if m.active == nil {
-		return nil
+	if v := m.views[m.active]; v != nil {
+		return v.Init()
 	}
-	return m.active.Init()
+	return nil
 }
 
 func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		if m.active != nil {
-			m.active.SetSize(msg.Width, msg.Height)
+		// Update active view size.
+		if v := m.views[m.active]; v != nil {
+			v.SetSize(msg.Width, msg.Height)
+			m.views[m.active] = v
 		}
-		// The active view will already have received a WindowSizeMsg via SetSize.
-		// Avoid double-delivery here.
+		// Keep palette sized too.
+		m.palette, _, _ = m.palette.Update(msg)
 		return m, nil
+	case tea.KeyMsg:
+		// Global toggle for command palette. Use ctrl+p to avoid stealing the
+		// existing application-level `tab` behavior.
+		if msg.String() == "ctrl+p" && !m.paletteOpen {
+			m.paletteOpen = true
+			return m, nil
+		}
+		if m.paletteOpen {
+			p, chosen, close := m.palette.Update(msg)
+			m.palette = p
+			if chosen != nil {
+				m = m.switchTo(*chosen)
+			}
+			if close {
+				m.paletteOpen = false
+			}
+			return m, nil
+		}
 	}
 
-	if m.active == nil {
+	// Route to active view.
+	v := m.views[m.active]
+	if v == nil {
 		return m, nil
 	}
-	v, cmd := m.active.Update(msg)
-	m.active = v
+	updated, cmd := v.Update(msg)
+	m.views[m.active] = updated
 	return m, cmd
 }
 
 func (m RootModel) View() string {
-	if m.active == nil {
+	v := m.views[m.active]
+	if v == nil {
 		return ""
 	}
-	return m.active.View()
+
+	base := v.View()
+	if !m.paletteOpen {
+		return base
+	}
+
+	// Simple overlay: render the palette after the active view.
+	return base + "\n\n" + m.palette.View()
+}
+
+func (m RootModel) switchTo(id ViewID) RootModel {
+	if _, ok := m.views[id]; !ok {
+		return m
+	}
+	m.active = id
+	if m.width > 0 && m.height > 0 {
+		v := m.views[m.active]
+		v.SetSize(m.width, m.height)
+		m.views[m.active] = v
+	}
+	return m
 }
