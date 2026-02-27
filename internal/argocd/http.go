@@ -820,6 +820,28 @@ func (c *HTTPClient) doJSON(ctx context.Context, method, path string, in any, ou
 
 	b, _ := io.ReadAll(res.Body)
 
+	// Argo CD sometimes returns a JSON "error envelope" even with a 200.
+	// Example: {"error":"invalid session: ...","code":16,"message":"..."}
+	// If we don't detect this, callers may interpret the response as an empty list.
+	if len(b) > 0 && b[0] == '{' {
+		var env struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+			Code    int    `json:"code"`
+		}
+		if err := json.Unmarshal(b, &env); err == nil {
+			if env.Error != "" && env.Message != "" && env.Code != 0 {
+				logger.Warn("argocd error envelope",
+					"method", method,
+					"path", path,
+					"code", env.Code,
+					"error", env.Error,
+				)
+				return fmt.Errorf("argocd api error: %s", env.Message)
+			}
+		}
+	}
+
 	logger.Debug("argocd request",
 		"method", method,
 		"path", path,

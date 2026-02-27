@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -58,6 +59,7 @@ func main() {
 		insecure     bool
 		logLevel     string
 		showVersion  bool
+		checkOnly    bool
 	)
 
 	flag.StringVar(&configPath, "config", "", "path to config file (optional)")
@@ -69,6 +71,7 @@ func main() {
 	flag.BoolVar(&insecure, "insecure", false, "skip TLS verification (or set ARGOCD_INSECURE=true)")
 	flag.StringVar(&logLevel, "log-level", "", "log level (debug, info, warn, error)")
 	flag.BoolVar(&showVersion, "version", false, "print version information and exit")
+	flag.BoolVar(&checkOnly, "check", false, "check Argo CD connectivity and exit")
 	flag.Parse()
 
 	if showVersion {
@@ -120,6 +123,25 @@ func main() {
 		h.Password = pwd
 		h.Insecure = cfg.ArgoCD.InsecureSkipVerify
 		client = h
+	}
+
+	if checkOnly {
+		ctx := context.Background()
+		if h, ok := client.(*argocd.HTTPClient); ok {
+			v, err := h.GetVersion(ctx)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ArgoCD version check failed: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("ArgoCD: %s (%s)\n", v.Version, h.Server)
+		}
+		apps, err := client.ListApplications(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ArgoCD connectivity failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Apps: %d\n", len(apps))
+		return
 	}
 
 	m := ui.NewRootModel(cfg, client)

@@ -8,27 +8,24 @@ It’s intentionally minimal: fast list, fast details, a few power keys (filter/
 
 ### Install
 
-#### Option A: Download a release binary (recommended)
+#### Option A: Install script (recommended)
 
 Each release publishes multi-platform archives + a `checksums.txt`.
+
+Linux/macOS:
+
+```bash
+VERSION=v0.1.0-alpha.2
+curl -fsSL https://raw.githubusercontent.com/phin3has/lazyargo/main/scripts/install.sh | bash -s -- "$VERSION" -b /usr/local/bin
+
+lazyargo --version
+```
+
+#### Option B: Manual download
 
 1) Download the right archive for your OS/arch from **GitHub Releases**.
 2) (Optional, recommended) verify the SHA256 against `checksums.txt`.
 3) Extract and put `lazyargo` on your `PATH`.
-
-Example (Linux amd64):
-
-```bash
-VERSION=v0.1.0-alpha.1
-curl -LO "https://github.com/phin3has/lazyargo/releases/download/${VERSION}/lazyargo_${VERSION}_linux_amd64.tar.gz"
-curl -LO "https://github.com/phin3has/lazyargo/releases/download/${VERSION}/checksums.txt"
-sha256sum -c checksums.txt --ignore-missing
-
-mkdir -p /tmp/lazyargo && tar -xzf "lazyargo_${VERSION}_linux_amd64.tar.gz" -C /tmp/lazyargo
-sudo install -m 0755 "/tmp/lazyargo/lazyargo_${VERSION}_linux_amd64/lazyargo" /usr/local/bin/lazyargo
-
-lazyargo --version
-```
 
 #### Option B: Build from source
 
