@@ -3,8 +3,8 @@ package ui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"lazyargo/internal/argocd"
-	"lazyargo/internal/config"
+	"github.com/phin3has/lazyargo/internal/argocd"
+	"github.com/phin3has/lazyargo/internal/config"
 )
 
 // ViewID is a stable identifier for a top-level view (tab).

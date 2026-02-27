@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"lazyargo/internal/config"
+	"github.com/phin3has/lazyargo/internal/config"
 )
 
 func TestRootModel_RoutesToActiveView(t *testing.T) {
