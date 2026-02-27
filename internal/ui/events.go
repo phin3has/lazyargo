@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"lazyargo/internal/argocd"
+	"github.com/phin3has/lazyargo/internal/argocd"
 )
 
 type eventsModel struct {

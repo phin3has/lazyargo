@@ -1,4 +1,4 @@
-module lazyargo
+module github.com/phin3has/lazyargo
 
 go 1.22
 
@@ -7,6 +7,7 @@ require (
 	github.com/charmbracelet/bubbletea v0.27.0
 	github.com/charmbracelet/lipgloss v0.12.1
 	gopkg.in/yaml.v3 v3.0.1
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -31,5 +32,4 @@ require (
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.24.0 // indirect
 	golang.org/x/text v0.3.8 // indirect
-	sigs.k8s.io/yaml v1.6.0 // indirect
 )

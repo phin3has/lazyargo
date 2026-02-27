@@ -10,8 +10,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"lazyargo/internal/argocd"
-	"lazyargo/internal/config"
+	"github.com/phin3has/lazyargo/internal/argocd"
+	"github.com/phin3has/lazyargo/internal/config"
 )
 
 type fakeClient struct {

@@ -1,5 +1,9 @@
 # binaries
 /lazyargo
+/dist/
+
+# worktrees / local dev
+.worktrees/
 
 # editor
 .vscode/

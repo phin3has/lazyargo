@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"sigs.k8s.io/yaml"
 
-	"lazyargo/internal/argocd"
+	"github.com/phin3has/lazyargo/internal/argocd"
 )
 
 type resourceDetailsTab int

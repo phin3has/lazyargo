@@ -3,7 +3,7 @@ name: release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
@@ -17,16 +17,58 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22.x'
+          go-version-file: go.mod
           cache: true
 
-      - name: Build (linux/amd64)
+      - name: Build release artifacts
+        env:
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
         run: |
+          set -euo pipefail
           mkdir -p dist
-          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/lazyargo ./cmd/lazyargo
+
+          build_one() {
+            local goos="$1" goarch="$2" ext="$3" archive="$4"
+            local bin="lazyargo${ext}"
+            local outdir="dist/lazyargo_${VERSION}_${goos}_${goarch}"
+            mkdir -p "$outdir"
+
+            GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
+              go build -trimpath \
+                -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                -o "$outdir/$bin" ./cmd/lazyargo
+
+            (cd dist && \
+              if [ "$archive" = "zip" ]; then
+                zip -qr "lazyargo_${VERSION}_${goos}_${goarch}.zip" "lazyargo_${VERSION}_${goos}_${goarch}"
+              else
+                tar -czf "lazyargo_${VERSION}_${goos}_${goarch}.tar.gz" "lazyargo_${VERSION}_${goos}_${goarch}"
+              fi
+            )
+          }
+
+          # linux
+          build_one linux amd64 "" tar
+          build_one linux arm64 "" tar
+
+          # macOS
+          build_one darwin amd64 "" tar
+          build_one darwin arm64 "" tar
+
+          # windows
+          build_one windows amd64 ".exe" zip
+
+          # checksums
+          (cd dist && sha256sum *.tar.gz *.zip > checksums.txt)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: lazyargo ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
-            dist/lazyargo
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt

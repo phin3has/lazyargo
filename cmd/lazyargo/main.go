@@ -2,14 +2,22 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"lazyargo/internal/argocd"
-	"lazyargo/internal/config"
-	"lazyargo/internal/ui"
+	"github.com/phin3has/lazyargo/internal/argocd"
+	"github.com/phin3has/lazyargo/internal/config"
+	"github.com/phin3has/lazyargo/internal/ui"
+)
+
+var (
+	// Version info (overridden at build time via -ldflags).
+	version = "dev"
+	commit  = ""
+	date    = ""
 )
 
 func firstNonEmpty(v ...string) string {
@@ -41,14 +49,15 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	var (
-		configPath string
-		useMock    bool
-		server     string
-		username   string
-		password   string
-		token      string
-		insecure   bool
-		logLevel   string
+		configPath   string
+		useMock      bool
+		server       string
+		username     string
+		password     string
+		token        string
+		insecure     bool
+		logLevel     string
+		showVersion  bool
 	)
 
 	flag.StringVar(&configPath, "config", "", "path to config file (optional)")
@@ -59,7 +68,19 @@ func main() {
 	flag.StringVar(&token, "token", "", "Argo CD auth token (overrides config + ARGOCD_AUTH_TOKEN)")
 	flag.BoolVar(&insecure, "insecure", false, "skip TLS verification (or set ARGOCD_INSECURE=true)")
 	flag.StringVar(&logLevel, "log-level", "", "log level (debug, info, warn, error)")
+	flag.BoolVar(&showVersion, "version", false, "print version information and exit")
 	flag.Parse()
+
+	if showVersion {
+		fmt.Printf("lazyargo %s\n", version)
+		if commit != "" {
+			fmt.Printf("commit: %s\n", commit)
+		}
+		if date != "" {
+			fmt.Printf("date:   %s\n", date)
+		}
+		return
+	}
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
