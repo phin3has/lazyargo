@@ -50,16 +50,16 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	var (
-		configPath   string
-		useMock      bool
-		server       string
-		username     string
-		password     string
-		token        string
-		insecure     bool
-		logLevel     string
-		showVersion  bool
-		checkOnly    bool
+		configPath  string
+		useMock     bool
+		server      string
+		username    string
+		password    string
+		token       string
+		insecure    bool
+		logLevel    string
+		showVersion bool
+		checkOnly   bool
 	)
 
 	flag.StringVar(&configPath, "config", "", "path to config file (optional)")
